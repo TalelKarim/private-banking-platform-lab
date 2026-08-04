@@ -1,0 +1,29 @@
+# Terraform working directories
+**/.terraform/*
+
+# Terraform state and plans
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Local Terraform variables
+*.tfvars
+*.auto.tfvars
+!*.tfvars.example
+
+# Terraform overrides
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# SSH private/public keys generated for the lab
+infrastructure/terraform/aws/.keys/
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+.vscode/settings.json
