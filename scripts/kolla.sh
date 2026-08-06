@@ -40,7 +40,7 @@ case "$ACTION" in
     "$KOLLA" prechecks -i "$INVENTORY" --use-test-images
     "$KOLLA" pull -i "$INVENTORY"
     "$KOLLA" deploy -i "$INVENTORY"
-    "$KOLLA" post-deploy
+    "$KOLLA" post-deploy -i "$INVENTORY"
     sudo systemctl restart private-banking-openstack-external-network.service
 
     install -d -m 0700 "$SECRETS_DIR"
