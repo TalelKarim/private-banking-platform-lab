@@ -95,6 +95,34 @@
     group: "{{ lab_user }}"
     mode: "0600"
 
+- name: Remove the obsolete Kolla password generation marker
+  ansible.builtin.file:
+    path: /data/openstack/secrets/.passwords-generated
+    state: absent
+
+- name: Populate empty Kolla passwords in the persistent file
+  ansible.builtin.command:
+    argv:
+      - "{{ kolla_venv }}/bin/kolla-genpwd"
+      - --passwords
+      - "{{ kolla_passwords_persistent }}"
+  become: true
+  become_user: "{{ lab_user }}"
+  environment:
+    HOME: "/home/{{ lab_user }}"
+  changed_when: false
+  no_log: true
+
+- name: Verify that a core Kolla password was generated
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/grep
+      - -Eq
+      - '^keystone_admin_password:[[:space:]]+[^[:space:]]+'
+      - "{{ kolla_passwords_persistent }}"
+  changed_when: false
+  no_log: true
+
 - name: Link the persistent password file into /etc/kolla
   ansible.builtin.file:
     src: "{{ kolla_passwords_persistent }}"
@@ -103,29 +131,6 @@
     force: true
     owner: "{{ lab_user }}"
     group: "{{ lab_user }}"
-
-- name: Check whether Kolla passwords were already generated
-  ansible.builtin.stat:
-    path: "{{ kolla_passwords_marker }}"
-  register: kolla_passwords_generated
-
-- name: Generate Kolla passwords once
-  ansible.builtin.command: "{{ kolla_venv }}/bin/kolla-genpwd"
-  become: true
-  become_user: "{{ lab_user }}"
-  environment:
-    HOME: "/home/{{ lab_user }}"
-  when: not kolla_passwords_generated.stat.exists
-  no_log: true
-
-- name: Mark the persistent Kolla password file as initialised
-  ansible.builtin.file:
-    path: "{{ kolla_passwords_marker }}"
-    state: touch
-    owner: "{{ lab_user }}"
-    group: "{{ lab_user }}"
-    mode: "0600"
-  when: not kolla_passwords_generated.stat.exists
 
 - name: Create the dedicated OpenStack client virtual environment directory
   ansible.builtin.file:
