@@ -9,6 +9,10 @@ CONFIG_DIR=/etc/kolla
 SECRETS_DIR=/data/openstack/secrets
 CLIENT_VENV=/opt/openstack-client-venv
 
+# Kolla shells out to ansible-playbook/ansible-galaxy by command name.
+# Keep its own virtualenv first in PATH so the pinned Ansible runtime is used.
+export PATH="$KOLLA_VENV/bin:$PATH"
+
 require_file() {
   if [ ! -e "$1" ]; then
     echo "Missing required file: $1" >&2

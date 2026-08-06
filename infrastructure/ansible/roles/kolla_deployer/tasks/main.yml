@@ -7,9 +7,11 @@
     group: "{{ lab_user }}"
     mode: "0755"
 
-- name: Install the pinned Kolla-Ansible release
+- name: Install the pinned Kolla-Ansible release and its Ansible runtime
   ansible.builtin.pip:
-    name: "kolla-ansible=={{ kolla_version }}"
+    name:
+      - "kolla-ansible=={{ kolla_version }}"
+      - "{{ kolla_ansible_core_spec }}"
     virtualenv: "{{ kolla_venv }}"
     virtualenv_command: python3 -m venv
     state: present
@@ -35,6 +37,7 @@
   become_user: "{{ lab_user }}"
   environment:
     HOME: "/home/{{ lab_user }}"
+    PATH: "{{ kolla_venv }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   changed_when: false
 
 - name: Copy the official all-in-one inventory
