@@ -58,12 +58,6 @@
     group: "{{ lab_user }}"
     mode: "0640"
 
-- name: Pin the inventory to the host system Python during bootstrap
-  ansible.builtin.replace:
-    path: "{{ kolla_inventory }}"
-    regexp: '^localhost(\\s+.*)?$'
-    replace: 'localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3'
-
 - name: Render the main Kolla configuration
   ansible.builtin.template:
     src: globals.yml.j2

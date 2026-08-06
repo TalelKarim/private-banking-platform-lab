@@ -3,6 +3,11 @@
 kolla_base_distro: "ubuntu"
 kolla_container_engine: "docker"
 
+# Kolla bootstraps host-side Python dependencies (including the Docker SDK)
+# into a dedicated target virtualenv. The bootstrap phase itself uses system Python.
+virtualenv: "{{ kolla_target_venv }}"
+virtualenv_site_packages: true
+
 network_interface: "{{ ansible_default_ipv4.interface }}"
 api_interface: "{{ ansible_default_ipv4.interface }}"
 tunnel_interface: "{{ ansible_default_ipv4.interface }}"
