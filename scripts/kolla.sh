@@ -31,13 +31,13 @@ case "$ACTION" in
   prepare)
     "$KOLLA" bootstrap-servers -i "$INVENTORY"
     sudo systemctl restart private-banking-openstack-external-network.service
-    "$KOLLA" prechecks -i "$INVENTORY"
+    "$KOLLA" prechecks -i "$INVENTORY" --use-test-images
     ;;
   prechecks)
-    "$KOLLA" prechecks -i "$INVENTORY"
+    "$KOLLA" prechecks -i "$INVENTORY" --use-test-images
     ;;
   deploy)
-    "$KOLLA" prechecks -i "$INVENTORY"
+    "$KOLLA" prechecks -i "$INVENTORY" --use-test-images
     "$KOLLA" pull -i "$INVENTORY"
     "$KOLLA" deploy -i "$INVENTORY"
     "$KOLLA" post-deploy
@@ -51,7 +51,7 @@ case "$ACTION" in
     fi
     ;;
   reconfigure)
-    "$KOLLA" prechecks -i "$INVENTORY"
+    "$KOLLA" prechecks -i "$INVENTORY" --use-test-images
     "$KOLLA" reconfigure -i "$INVENTORY"
     ;;
   stop)
