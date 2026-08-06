@@ -34,6 +34,12 @@ output "data_volume_id" {
   value       = aws_ebs_volume.lab_data.id
 }
 
+
+output "cinder_volume_id" {
+  description = "Dedicated Cinder LVM EBS volume"
+  value       = aws_ebs_volume.cinder.id
+}
+
 output "spot_instance_request_id" {
   description = "Persistent Spot request ID"
   value       = aws_instance.lab.spot_instance_request_id

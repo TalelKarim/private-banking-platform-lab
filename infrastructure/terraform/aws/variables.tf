@@ -44,6 +44,18 @@ variable "data_volume_size" {
   }
 }
 
+
+variable "cinder_volume_size" {
+  description = "Dedicated raw EBS volume size in GiB for the Cinder LVM backend"
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.cinder_volume_size >= 50
+    error_message = "The Cinder volume must be at least 50 GiB."
+  }
+}
+
 variable "ssh_cidr" {
   description = "CIDR allowed to SSH from the Mac. Null automatically detects the current public IPv4 address."
   type        = string

@@ -1,0 +1,16 @@
+---
+lab_user: ubuntu
+kolla_version: "22.0.0"
+kolla_venv: /opt/kolla-venv
+openstack_client_venv: /opt/openstack-client-venv
+kolla_config_dir: /etc/kolla
+kolla_inventory: /data/openstack/kolla/inventory/all-in-one
+kolla_passwords_persistent: /data/openstack/secrets/passwords.yml
+kolla_passwords_marker: /data/openstack/secrets/.passwords-generated
+openstack_release: "2026.1"
+
+openstack_external_neutron_interface: os-ext
+openstack_external_cidr: 192.168.250.0/24
+openstack_external_gateway: 192.168.250.1
+openstack_external_allocation_start: 192.168.250.100
+openstack_external_allocation_end: 192.168.250.199

@@ -27,3 +27,14 @@ infrastructure/terraform/aws/.keys/
 # OS / editor
 .DS_Store
 .vscode/settings.json
+# Local Python/Ansible environments
+.venv/
+infrastructure/ansible/.collections/
+
+# Generated OpenStack secrets and rendered runtime files
+infrastructure/openstack/kolla/secrets/
+clouds.yaml
+passwords.yml
+
+# Terraform binary plans without an extension
+**/tfplan

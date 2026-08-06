@@ -1,0 +1,142 @@
+---
+- name: Create the Kolla virtual environment directory
+  ansible.builtin.file:
+    path: "{{ kolla_venv }}"
+    state: directory
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0755"
+
+- name: Install the pinned Kolla-Ansible release
+  ansible.builtin.pip:
+    name: "kolla-ansible=={{ kolla_version }}"
+    virtualenv: "{{ kolla_venv }}"
+    virtualenv_command: python3 -m venv
+    state: present
+  become: true
+  become_user: "{{ lab_user }}"
+
+- name: Create Kolla configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0750"
+  loop:
+    - "{{ kolla_config_dir }}"
+    - "{{ kolla_config_dir }}/globals.d"
+    - /data/openstack/kolla/inventory
+    - /data/openstack/secrets
+
+- name: Install Kolla Ansible Galaxy dependencies
+  ansible.builtin.command: "{{ kolla_venv }}/bin/kolla-ansible install-deps"
+  become: true
+  become_user: "{{ lab_user }}"
+  environment:
+    HOME: "/home/{{ lab_user }}"
+  changed_when: false
+
+- name: Copy the official all-in-one inventory
+  ansible.builtin.copy:
+    src: "{{ kolla_venv }}/share/kolla-ansible/ansible/inventory/all-in-one"
+    dest: "{{ kolla_inventory }}"
+    remote_src: true
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0640"
+
+- name: Pin the inventory to the host system Python during bootstrap
+  ansible.builtin.replace:
+    path: "{{ kolla_inventory }}"
+    regexp: '^localhost(\\s+.*)?$'
+    replace: 'localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3'
+
+- name: Render the main Kolla configuration
+  ansible.builtin.template:
+    src: globals.yml.j2
+    dest: "{{ kolla_config_dir }}/globals.yml"
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0640"
+
+- name: Render modular Kolla configuration files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ kolla_config_dir }}/globals.d/{{ item.dest }}"
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0640"
+  loop:
+    - src: globals.d/10-core.yml.j2
+      dest: 10-core.yml
+    - src: globals.d/20-storage.yml.j2
+      dest: 20-storage.yml
+
+- name: Initialise the persistent Kolla password file from the official example
+  ansible.builtin.copy:
+    src: "{{ kolla_venv }}/share/kolla-ansible/etc_examples/kolla/passwords.yml"
+    dest: "{{ kolla_passwords_persistent }}"
+    remote_src: true
+    force: false
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0600"
+
+- name: Link the persistent password file into /etc/kolla
+  ansible.builtin.file:
+    src: "{{ kolla_passwords_persistent }}"
+    dest: "{{ kolla_config_dir }}/passwords.yml"
+    state: link
+    force: true
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+
+- name: Check whether Kolla passwords were already generated
+  ansible.builtin.stat:
+    path: "{{ kolla_passwords_marker }}"
+  register: kolla_passwords_generated
+
+- name: Generate Kolla passwords once
+  ansible.builtin.command: "{{ kolla_venv }}/bin/kolla-genpwd"
+  become: true
+  become_user: "{{ lab_user }}"
+  environment:
+    HOME: "/home/{{ lab_user }}"
+  when: not kolla_passwords_generated.stat.exists
+  no_log: true
+
+- name: Mark the persistent Kolla password file as initialised
+  ansible.builtin.file:
+    path: "{{ kolla_passwords_marker }}"
+    state: touch
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0600"
+  when: not kolla_passwords_generated.stat.exists
+
+- name: Create the dedicated OpenStack client virtual environment
+  ansible.builtin.pip:
+    name:
+      - python-openstackclient
+      - python-cinderclient
+      - python-neutronclient
+    virtualenv: "{{ openstack_client_venv }}"
+    virtualenv_command: python3 -m venv
+    extra_args: "-c https://releases.openstack.org/constraints/upper/{{ openstack_release }}"
+    state: present
+  become: true
+  become_user: "{{ lab_user }}"
+
+- name: Record the external network plan for the Terraform OpenStack layer
+  ansible.builtin.copy:
+    dest: /data/openstack/kolla/external-network.env
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0640"
+    content: |
+      EXTERNAL_CIDR={{ openstack_external_cidr }}
+      EXTERNAL_GATEWAY={{ openstack_external_gateway }}
+      EXTERNAL_ALLOCATION_START={{ openstack_external_allocation_start }}
+      EXTERNAL_ALLOCATION_END={{ openstack_external_allocation_end }}
+      PHYSICAL_NETWORK=physnet1

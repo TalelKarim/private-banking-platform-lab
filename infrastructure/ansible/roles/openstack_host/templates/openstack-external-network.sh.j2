@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HOST_IF="{{ openstack_external_host_interface }}"
+NEUTRON_IF="{{ openstack_external_neutron_interface }}"
+HOST_ADDR="{{ openstack_external_host_address }}"
+UPLINK_IF="{{ openstack_management_interface }}"
+EXTERNAL_CIDR="{{ openstack_external_cidr }}"
+
+if ! ip link show "$HOST_IF" >/dev/null 2>&1; then
+  ip link add "$HOST_IF" type veth peer name "$NEUTRON_IF"
+fi
+
+ip address replace "$HOST_ADDR" dev "$HOST_IF"
+ip link set "$HOST_IF" up
+ip link set "$NEUTRON_IF" up
+
+iptables -C FORWARD -i "$HOST_IF" -o "$UPLINK_IF" -j ACCEPT 2>/dev/null \
+  || iptables -A FORWARD -i "$HOST_IF" -o "$UPLINK_IF" -j ACCEPT
+
+iptables -C FORWARD -i "$UPLINK_IF" -o "$HOST_IF" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
+  || iptables -A FORWARD -i "$UPLINK_IF" -o "$HOST_IF" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+iptables -t nat -C POSTROUTING -s "$EXTERNAL_CIDR" -o "$UPLINK_IF" -j MASQUERADE 2>/dev/null \
+  || iptables -t nat -A POSTROUTING -s "$EXTERNAL_CIDR" -o "$UPLINK_IF" -j MASQUERADE

@@ -1,0 +1,33 @@
+---
+lab_user: ubuntu
+lab_data_mount: /data
+
+openstack_management_interface: "{{ ansible_default_ipv4.interface }}"
+openstack_management_address: "{{ ansible_default_ipv4.address }}"
+
+openstack_external_host_interface: os-host
+openstack_external_neutron_interface: os-ext
+openstack_external_cidr: 192.168.250.0/24
+openstack_external_host_address: 192.168.250.1/24
+
+cinder_volume_group: cinder-volumes
+
+openstack_host_packages:
+  - bridge-utils
+  - conntrack
+  - cpu-checker
+  - iproute2
+  - iptables
+  - libdbus-glib-1-dev
+  - libffi-dev
+  - libssl-dev
+  - lvm2
+  - net-tools
+  - qemu-kvm
+
+openstack_kernel_modules:
+  - kvm
+  - kvm_intel
+  - br_netfilter
+  - overlay
+  - configfs

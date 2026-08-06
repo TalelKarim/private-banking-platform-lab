@@ -1,0 +1,10 @@
+---
+- name: Prepare the AWS host and install Kolla-Ansible
+  hosts: openstack_aio
+  gather_facts: true
+  become: true
+
+  roles:
+    - role: common_linux
+    - role: openstack_host
+    - role: kolla_deployer

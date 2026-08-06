@@ -1,0 +1,185 @@
+---
+- name: Assert that the persistent data volume is mounted
+  ansible.builtin.assert:
+    that:
+      - ansible_mounts | selectattr("mount", "equalto", lab_data_mount) | list | length == 1
+    fail_msg: "{{ lab_data_mount }} is not mounted. Check cloud-init and the data EBS attachment."
+
+- name: Install OpenStack host packages
+  ansible.builtin.apt:
+    name: "{{ openstack_host_packages }}"
+    state: present
+
+- name: Create the APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Install the HashiCorp repository signing key
+  ansible.builtin.get_url:
+    url: https://apt.releases.hashicorp.com/gpg
+    dest: /etc/apt/keyrings/hashicorp.asc
+    mode: "0644"
+
+- name: Configure the HashiCorp APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/hashicorp.asc] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+    filename: hashicorp
+    state: present
+    update_cache: true
+
+- name: Install Terraform for the future OpenStack provider layer
+  ansible.builtin.apt:
+    name: terraform
+    state: present
+
+- name: Configure nested KVM before loading the module
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/kvm-intel.conf
+    mode: "0644"
+    content: |
+      options kvm_intel nested=1
+
+- name: Persist required kernel modules
+  ansible.builtin.template:
+    src: modules-load.conf.j2
+    dest: /etc/modules-load.d/private-banking-lab.conf
+    mode: "0644"
+
+- name: Load required kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ openstack_kernel_modules }}"
+
+- name: Persist host kernel and networking settings
+  ansible.builtin.template:
+    src: sysctl.conf.j2
+    dest: /etc/sysctl.d/99-private-banking-lab.conf
+    mode: "0644"
+  notify: Apply sysctl settings
+
+- name: Create the root-owned Docker data directory
+  ansible.builtin.file:
+    path: /data/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0711"
+
+- name: Create persistent operator working directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /data/openstack, mode: "0755" }
+    - { path: /data/openstack/kolla, mode: "0755" }
+    - { path: /data/openstack/kolla/inventory, mode: "0755" }
+    - { path: /data/openstack/secrets, mode: "0700" }
+    - { path: /data/images, mode: "0755" }
+    - { path: /data/repos, mode: "0755" }
+    - { path: /data/terraform, mode: "0755" }
+
+- name: Install the OpenStack external network setup script
+  ansible.builtin.template:
+    src: openstack-external-network.sh.j2
+    dest: /usr/local/sbin/private-banking-openstack-external-network
+    mode: "0755"
+  notify: Restart external network service
+
+- name: Install the OpenStack external network systemd service
+  ansible.builtin.template:
+    src: openstack-external-network.service.j2
+    dest: /etc/systemd/system/private-banking-openstack-external-network.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart external network service
+
+- name: Flush host configuration handlers before validation
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify the external veth pair created for Neutron
+  ansible.builtin.command: "ip link show {{ item }}"
+  loop:
+    - "{{ openstack_external_host_interface }}"
+    - "{{ openstack_external_neutron_interface }}"
+  changed_when: false
+
+- name: Verify the host-side external gateway address
+  ansible.builtin.command: "ip -4 address show dev {{ openstack_external_host_interface }}"
+  register: external_host_address
+  changed_when: false
+  failed_when: openstack_external_host_address.split('/')[0] not in external_host_address.stdout
+
+- name: Read the dedicated Cinder EBS serial
+  ansible.builtin.shell: |
+    set -euo pipefail
+    source /etc/private-banking-lab/volumes.env
+    printf '%s' "$CINDER_VOLUME_SERIAL"
+  args:
+    executable: /bin/bash
+  register: cinder_serial
+  changed_when: false
+
+- name: Locate the dedicated Cinder EBS block device
+  ansible.builtin.shell: |
+    set -euo pipefail
+    lsblk -dn -o NAME,SERIAL | awk -v expected="{{ cinder_serial.stdout }}" '$2 == expected { print "/dev/" $1; exit }'
+  args:
+    executable: /bin/bash
+  register: cinder_device
+  changed_when: false
+
+- name: Assert that the dedicated Cinder device is safe to initialise
+  ansible.builtin.assert:
+    that:
+      - cinder_device.stdout | length > 0
+      - cinder_device.stdout != "/dev/nvme0n1"
+    fail_msg: "The dedicated Cinder EBS volume could not be identified safely."
+
+- name: Check whether the Cinder device is mounted
+  ansible.builtin.command: "lsblk -dn -o MOUNTPOINT {{ cinder_device.stdout }}"
+  register: cinder_mountpoint
+  changed_when: false
+
+- name: Refuse to initialise a mounted Cinder device
+  ansible.builtin.assert:
+    that:
+      - cinder_mountpoint.stdout | trim == ""
+    fail_msg: "{{ cinder_device.stdout }} is mounted and will not be used for Cinder."
+
+- name: Create the Cinder LVM volume group
+  community.general.lvg:
+    vg: "{{ cinder_volume_group }}"
+    pvs: "{{ cinder_device.stdout }}"
+    state: present
+    pvresize: true
+
+- name: Validate KVM availability
+  ansible.builtin.stat:
+    path: /dev/kvm
+  register: kvm_device
+
+- name: Assert nested KVM and external network prerequisites
+  ansible.builtin.assert:
+    that:
+      - kvm_device.stat.exists
+      - openstack_management_interface | length > 0
+      - openstack_management_address | length > 0
+    fail_msg: "KVM or management networking is not ready for Kolla-Ansible."
+
+- name: Check the nested KVM flag
+  ansible.builtin.command: cat /sys/module/kvm_intel/parameters/nested
+  register: nested_kvm
+  changed_when: false
+
+- name: Assert that nested KVM is enabled
+  ansible.builtin.assert:
+    that:
+      - nested_kvm.stdout | trim in ["Y", "1"]
+    fail_msg: "Nested KVM is disabled. Verify the EC2 cpu_options configuration."

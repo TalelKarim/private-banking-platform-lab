@@ -9,7 +9,22 @@ resource "aws_ebs_volume" "lab_data" {
 
   tags = {
     Name    = "${var.project_name}-data"
-    Purpose = "OpenStack, Docker, images and nested VM data"
+    Purpose = "Docker, Kolla, Glance, Nova ephemeral disks and repository data"
+  }
+}
+
+resource "aws_ebs_volume" "cinder" {
+  availability_zone = data.aws_subnet.selected.availability_zone
+
+  type       = "gp3"
+  size       = var.cinder_volume_size
+  encrypted  = true
+  iops       = 3000
+  throughput = 125
+
+  tags = {
+    Name    = "${var.project_name}-cinder"
+    Purpose = "Dedicated raw block device for the OpenStack Cinder LVM backend"
   }
 }
 
@@ -24,13 +39,11 @@ resource "aws_instance" "lab" {
   key_name             = aws_key_pair.lab.key_name
   iam_instance_profile = aws_iam_instance_profile.lab.name
 
-  # Important : l'EC2 doit pouvoir router du trafic pour les réseaux
-  # OpenStack et les VM imbriquées.
+  # The EC2 host routes traffic for nested OpenStack networks.
   source_dest_check = false
 
   ebs_optimized = true
   monitoring    = false
-
 
   cpu_options {
     nested_virtualization = "enabled"
@@ -68,11 +81,12 @@ resource "aws_instance" "lab" {
   user_data = templatefile(
     "${path.module}/cloud-init/user-data.sh.tftpl",
     {
-      data_volume_serial = replace(aws_ebs_volume.lab_data.id, "-", "")
+      data_volume_serial   = replace(aws_ebs_volume.lab_data.id, "-", "")
+      cinder_volume_serial = replace(aws_ebs_volume.cinder.id, "-", "")
     }
   )
 
-  # Modifier le user-data ne doit pas détruire notre gros lab.
+  # Configuration after first boot is owned by Ansible, not cloud-init.
   user_data_replace_on_change = false
 
   tags = {
@@ -91,6 +105,16 @@ resource "aws_volume_attachment" "lab_data" {
   device_name = "/dev/sdf"
 
   volume_id   = aws_ebs_volume.lab_data.id
+  instance_id = aws_instance.lab.id
+
+  force_detach                   = false
+  stop_instance_before_detaching = true
+}
+
+resource "aws_volume_attachment" "cinder" {
+  device_name = "/dev/sdg"
+
+  volume_id   = aws_ebs_volume.cinder.id
   instance_id = aws_instance.lab.id
 
   force_detach                   = false

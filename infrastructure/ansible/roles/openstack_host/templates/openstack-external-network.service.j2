@@ -1,0 +1,13 @@
+[Unit]
+Description=Create the OpenStack external veth pair and outbound NAT
+After=network-online.target
+Wants=network-online.target
+Before=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/private-banking-openstack-external-network
+
+[Install]
+WantedBy=multi-user.target
