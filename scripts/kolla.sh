@@ -4,6 +4,7 @@ set -euo pipefail
 ACTION=${1:-}
 KOLLA_VENV=/opt/kolla-venv
 KOLLA="$KOLLA_VENV/bin/kolla-ansible"
+KOLLA_COLLECTIONS_PATH="$KOLLA_VENV/collections"
 INVENTORY=/data/openstack/kolla/inventory/all-in-one
 CONFIG_DIR=/etc/kolla
 SECRETS_DIR=/data/openstack/secrets
@@ -12,6 +13,7 @@ CLIENT_VENV=/opt/openstack-client-venv
 # Kolla shells out to ansible-playbook/ansible-galaxy by command name.
 # Keep its own virtualenv first in PATH so the pinned Ansible runtime is used.
 export PATH="$KOLLA_VENV/bin:$PATH"
+export ANSIBLE_COLLECTIONS_PATH="$KOLLA_COLLECTIONS_PATH:$HOME/.ansible/collections:/usr/share/ansible/collections"
 
 require_file() {
   if [ ! -e "$1" ]; then

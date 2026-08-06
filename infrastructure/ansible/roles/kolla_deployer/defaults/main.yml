@@ -3,6 +3,7 @@ lab_user: ubuntu
 kolla_version: "22.0.0"
 kolla_ansible_core_spec: "ansible-core>=2.19,<2.21"
 kolla_venv: /opt/kolla-venv
+kolla_collections_path: "{{ kolla_venv }}/collections"
 openstack_client_venv: /opt/openstack-client-venv
 kolla_config_dir: /etc/kolla
 kolla_inventory: /data/openstack/kolla/inventory/all-in-one

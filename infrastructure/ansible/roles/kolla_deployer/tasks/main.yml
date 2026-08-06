@@ -31,6 +31,14 @@
     - /data/openstack/kolla/inventory
     - /data/openstack/secrets
 
+- name: Create the dedicated Kolla Ansible collections directory
+  ansible.builtin.file:
+    path: "{{ kolla_collections_path }}"
+    state: directory
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0755"
+
 - name: Install Kolla Ansible Galaxy dependencies
   ansible.builtin.command: "{{ kolla_venv }}/bin/kolla-ansible install-deps"
   become: true
@@ -38,6 +46,7 @@
   environment:
     HOME: "/home/{{ lab_user }}"
     PATH: "{{ kolla_venv }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    ANSIBLE_COLLECTIONS_PATH: "{{ kolla_collections_path }}:/home/{{ lab_user }}/.ansible/collections:/usr/share/ansible/collections"
   changed_when: false
 
 - name: Copy the official all-in-one inventory
