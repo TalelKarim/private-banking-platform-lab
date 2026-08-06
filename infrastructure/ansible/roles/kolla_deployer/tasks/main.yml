@@ -118,6 +118,14 @@
     mode: "0600"
   when: not kolla_passwords_generated.stat.exists
 
+- name: Create the dedicated OpenStack client virtual environment directory
+  ansible.builtin.file:
+    path: "{{ openstack_client_venv }}"
+    state: directory
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0755"
+
 - name: Create the dedicated OpenStack client virtual environment
   ansible.builtin.pip:
     name:
