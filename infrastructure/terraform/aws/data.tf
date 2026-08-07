@@ -47,3 +47,6 @@ data "aws_ssm_parameter" "ubuntu_2404_ami" {
 data "aws_ec2_managed_prefix_list" "instance_connect" {
   name = "com.amazonaws.${var.aws_region}.ec2-instance-connect"
 }
+locals {
+  use_golden_ami = var.golden_ami_id != null
+}

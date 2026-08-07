@@ -1,0 +1,6 @@
+# Stable address baked into the Kolla/OpenStack control-plane configuration.
+openstack_host_private_ip = "172.31.31.70"
+
+# Keep null while building the first OpenStack host from Ubuntu.
+# After baking, copy the produced AMI ID here in a local *.auto.tfvars file.
+# golden_ami_id = "ami-0123456789abcdef0"

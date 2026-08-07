@@ -31,13 +31,13 @@ output "ubuntu_ami_id" {
 
 output "data_volume_id" {
   description = "Persistent data EBS volume"
-  value       = aws_ebs_volume.lab_data.id
+  value       = local.use_golden_ami ? null : aws_ebs_volume.lab_data[0].id
 }
 
 
 output "cinder_volume_id" {
   description = "Dedicated Cinder LVM EBS volume"
-  value       = aws_ebs_volume.cinder.id
+  value       = local.use_golden_ami ? null : aws_ebs_volume.cinder[0].id
 }
 
 output "spot_instance_request_id" {
@@ -68,4 +68,26 @@ output "ssm_command" {
 output "bootstrap_log_command" {
   description = "Command to wait for cloud-init and inspect the bootstrap log"
   value       = "sudo cloud-init status --wait && sudo tail -n 200 /var/log/private-banking-lab-bootstrap.log"
+}
+
+output "aws_region" {
+  description = "AWS region used by the lab"
+  value       = var.aws_region
+}
+
+output "effective_ami_id" {
+  description = "AMI currently selected for the OpenStack host"
+  value       = local.use_golden_ami ? var.golden_ami_id : data.aws_ssm_parameter.ubuntu_2404_ami.value
+  sensitive   = true
+}
+
+output "golden_ami_mode" {
+  description = "Whether the host is launched directly from a baked OpenStack AMI"
+  value       = local.use_golden_ami
+}
+
+
+output "configured_openstack_host_private_ip" {
+  description = "Stable private IPv4 that Golden-AMI launches must reuse"
+  value       = var.openstack_host_private_ip
 }

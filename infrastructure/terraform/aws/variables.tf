@@ -77,3 +77,26 @@ variable "subnet_id" {
     error_message = "subnet_id must start with subnet-."
   }
 }
+
+variable "openstack_host_private_ip" {
+  description = "Stable private IPv4 used by the OpenStack all-in-one host. Kolla endpoints are baked with this address."
+  type        = string
+  default     = "172.31.31.70"
+
+  validation {
+    condition     = can(cidrnetmask("${var.openstack_host_private_ip}/32"))
+    error_message = "openstack_host_private_ip must be a valid IPv4 address."
+  }
+}
+
+variable "golden_ami_id" {
+  description = "Optional baked OpenStack AMI. Null keeps bootstrap mode on the stock Ubuntu AMI."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.golden_ami_id == null || can(regex("^ami-[0-9a-f]+$", var.golden_ami_id))
+    error_message = "golden_ami_id must be null or a valid AMI ID such as ami-0123456789abcdef0."
+  }
+}

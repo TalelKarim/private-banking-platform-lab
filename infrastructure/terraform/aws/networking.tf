@@ -34,7 +34,7 @@ resource "aws_vpc_security_group_ingress_rule" "ssh_from_instance_connect" {
 
 
 # Openstack dashboard direct depuis ton Mac uniquement.
-resource "aws_vpc_security_group_ingress_rule" "ssh_from_mac" {
+resource "aws_vpc_security_group_ingress_rule" "http_from_mac" {
   security_group_id = aws_security_group.lab.id
 
   description = "Openstack dashboards from the current Mac public IPv4"
