@@ -50,6 +50,7 @@ DATA_VOLUME_SERIAL=${DATA_SERIAL}
 CINDER_VOLUME_SERIAL=${CINDER_SERIAL}
 EOF_VOLUMES
 chmod 0644 /etc/private-banking-lab/volumes.env
+rm -f /data/openstack/.golden-ami-ready
 
 # Reassert the host-side OpenStack external network before/with Docker startup.
 systemctl enable --now private-banking-openstack-external-network.service

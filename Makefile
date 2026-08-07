@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack
+.PHONY: help bootstrap-ansible prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
@@ -12,7 +12,11 @@ help:
 	  'openstack-status      Show the running Kolla containers' \
 	  'validate-openstack    Query the OpenStack control plane with the admin cloud' \
 	  'reconfigure-openstack Apply Kolla configuration changes' \
-	  'stop-openstack        Stop the OpenStack containers'
+	  'stop-openstack        Stop the OpenStack containers' \
+	  'prepare-golden-ami   Clean test workloads and prepare the current EC2 for baking' \
+	  'bake-golden-ami      Stop the source EC2 and create a 3-volume Golden AMI from the Mac' \
+	  'activate-golden-ami  Write local Terraform Golden mode (AMI_ID=ami-...)' \
+	  'deactivate-golden-ami Return Terraform to stock-Ubuntu bootstrap mode'
 
 bootstrap-ansible:
 	./scripts/bootstrap-ansible.sh
@@ -40,3 +44,16 @@ reconfigure-openstack:
 
 stop-openstack:
 	./scripts/kolla.sh stop
+
+prepare-golden-ami:
+	./scripts/prepare-golden-ami.sh
+
+bake-golden-ami:
+	./scripts/bake-golden-ami.sh
+
+activate-golden-ami:
+	@test -n "$(AMI_ID)" || (echo "Usage: make activate-golden-ami AMI_ID=ami-..." >&2; exit 2)
+	./scripts/activate-golden-ami.sh "$(AMI_ID)"
+
+deactivate-golden-ami:
+	./scripts/deactivate-golden-ami.sh

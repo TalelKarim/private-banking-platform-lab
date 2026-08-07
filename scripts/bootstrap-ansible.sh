@@ -14,9 +14,17 @@ fi
 sudo -n true
 sudo cloud-init status --wait >/dev/null
 
-if ! grep -qF "=== Minimal private banking lab bootstrap completed ===" \
-  /var/log/private-banking-lab-bootstrap.log; then
-  echo "The minimal cloud-init bootstrap did not reach its final marker." >&2
+BOOTSTRAP_READY=false
+if grep -qF "=== Minimal private banking lab bootstrap completed ===" \
+  /var/log/private-banking-lab-bootstrap.log 2>/dev/null; then
+  BOOTSTRAP_READY=true
+fi
+if grep -qF "=== Golden AMI first-boot reconciliation completed ===" \
+  /var/log/private-banking-lab-golden-boot.log 2>/dev/null; then
+  BOOTSTRAP_READY=true
+fi
+if [ "$BOOTSTRAP_READY" != true ]; then
+  echo "Neither the stock bootstrap nor the Golden AMI first-boot reconciliation reached its final marker." >&2
   exit 1
 fi
 
