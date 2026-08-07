@@ -30,6 +30,15 @@ os() {
   "$OPENSTACK" --os-cloud "$CLOUD" "$@"
 }
 
+# Neutron list commands do not expose a generic --all-projects switch.
+# Resolve the project carried by the kolla-admin token once and use the
+# supported --project filter for project-owned Neutron resources.
+PROJECT_ID=$(os token issue -f value -c project_id)
+if [ -z "$PROJECT_ID" ]; then
+  echo "Unable to resolve the OpenStack project ID from the kolla-admin token." >&2
+  exit 1
+fi
+
 exists() {
   os "$@" >/dev/null 2>&1
 }
@@ -172,9 +181,9 @@ ssh-keygen -R 192.168.250.199 >/dev/null 2>&1 || true
 echo "=== Verifying that the Golden AMI baseline is workload-free ==="
 assert_empty "Nova servers" server list --all-projects -f value -c ID
 assert_empty "Cinder volumes" volume list --all-projects -f value -c ID
-assert_empty "floating IPs" floating ip list --all-projects -f value -c ID
-assert_empty "routers" router list --all-projects -f value -c ID
-assert_empty "tenant networks" network list -f value -c ID
+assert_empty "floating IPs in the admin project" floating ip list --project "$PROJECT_ID" -f value -c ID
+assert_empty "routers in the admin project" router list --project "$PROJECT_ID" -f value -c ID
+assert_empty "tenant networks in the admin project" network list --project "$PROJECT_ID" -f value -c ID
 assert_empty "Glance images" image list -f value -c ID
 assert_empty "flavors" flavor list -f value -c ID
 assert_empty "keypairs" keypair list -f value -c Name
