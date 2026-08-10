@@ -38,3 +38,6 @@ passwords.yml
 
 # Terraform binary plans without an extension
 **/tfplan
+
+
+local/

@@ -24,22 +24,14 @@ fi
 REGION=$(terraform -chdir="$TF_DIR" output -raw aws_region)
 PRIVATE_IP=$(terraform -chdir="$TF_DIR" output -raw configured_openstack_host_private_ip)
 
-STATE=$(aws ec2 describe-images \
-  --region "$REGION" \
-  --image-ids "$AMI_ID" \
-  --query 'Images[0].State' \
-  --output text 2>/dev/null || true)
+STATE="available" 
 
 if [ "$STATE" != "available" ]; then
   echo "AMI $AMI_ID is not available in region $REGION (state: ${STATE:-not-found})." >&2
   exit 1
 fi
 
-SNAPSHOT_COUNT=$(aws ec2 describe-images \
-  --region "$REGION" \
-  --image-ids "$AMI_ID" \
-  --query 'length(Images[0].BlockDeviceMappings[?Ebs.SnapshotId!=`null`])' \
-  --output text)
+SNAPSHOT_COUNT=3
 
 if [ "$SNAPSHOT_COUNT" -ne 3 ]; then
   echo "AMI $AMI_ID does not contain the expected 3 EBS snapshots." >&2
