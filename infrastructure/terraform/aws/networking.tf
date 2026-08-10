@@ -51,3 +51,41 @@ resource "aws_vpc_security_group_egress_rule" "all_ipv4" {
   ip_protocol = "-1"
   cidr_ipv4   = "0.0.0.0/0"
 }
+
+# The administration runner reaches the OpenStack control-plane only through
+# the host's private VPC address. Security-group references keep these APIs
+# closed to the Internet while allowing the dedicated runner to manage them.
+locals {
+  openstack_api_ports = {
+    heat_cfn  = 8000
+    heat      = 8004
+    nova      = 8774
+    cinder    = 8776
+    placement = 8778
+    glance    = 9292
+    neutron   = 9696
+    keystone  = 5000
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "openstack_api_from_ops_runner" {
+  for_each = local.openstack_api_ports
+
+  security_group_id            = aws_security_group.lab.id
+  referenced_security_group_id = aws_security_group.ops_runner.id
+
+  description = "${each.key} API from the dedicated ops runner"
+  ip_protocol = "tcp"
+  from_port   = each.value
+  to_port     = each.value
+}
+
+resource "aws_vpc_security_group_ingress_rule" "ssh_from_ops_runner" {
+  security_group_id            = aws_security_group.lab.id
+  referenced_security_group_id = aws_security_group.ops_runner.id
+
+  description = "SSH from the dedicated ops runner for future Ansible administration"
+  ip_protocol = "tcp"
+  from_port   = 22
+  to_port     = 22
+}

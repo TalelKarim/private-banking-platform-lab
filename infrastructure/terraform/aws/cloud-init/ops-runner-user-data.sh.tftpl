@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euxo pipefail
+
+exec > >(
+  tee -a /var/log/private-banking-lab-ops-runner-bootstrap.log |
+  logger -t private-banking-lab-ops-runner -s 2>/dev/console
+) 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+
+echo "=== Starting private banking lab ops-runner bootstrap ==="
+
+apt-get update
+apt-get install -y \
+  ca-certificates \
+  curl \
+  ec2-instance-connect \
+  git \
+  gnupg \
+  jq \
+  make \
+  openssh-server \
+  pipx \
+  python3 \
+  python3-pip \
+  python3-venv \
+  unzip
+
+systemctl enable --now ssh
+systemctl enable --now \
+  snap.amazon-ssm-agent.amazon-ssm-agent.service \
+  || systemctl enable --now amazon-ssm-agent \
+  || true
+
+# Terraform CLI from HashiCorp's official APT repository.
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://apt.releases.hashicorp.com/gpg \
+  | gpg --dearmor --yes -o /etc/apt/keyrings/hashicorp.gpg
+chmod 0644 /etc/apt/keyrings/hashicorp.gpg
+
+. /etc/os-release
+printf 'deb [arch=%s signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com %s main\n' \
+  "$(dpkg --print-architecture)" "$VERSION_CODENAME" \
+  > /etc/apt/sources.list.d/hashicorp.list
+
+apt-get update
+apt-get install -y terraform
+
+# Keep automation tools isolated from Ubuntu's system Python.
+python3 -m venv /opt/ansible-venv
+/opt/ansible-venv/bin/pip install --upgrade pip
+/opt/ansible-venv/bin/pip install 'ansible-core>=2.19.1,<2.21'
+ln -sf /opt/ansible-venv/bin/ansible /usr/local/bin/ansible
+ln -sf /opt/ansible-venv/bin/ansible-playbook /usr/local/bin/ansible-playbook
+
+python3 -m venv /opt/openstack-client-venv
+/opt/openstack-client-venv/bin/pip install --upgrade pip
+/opt/openstack-client-venv/bin/pip install python-openstackclient
+ln -sf /opt/openstack-client-venv/bin/openstack /usr/local/bin/openstack
+
+install -d -m 0755 -o ubuntu -g ubuntu /home/ubuntu/workspace
+
+cat > /etc/motd <<'EOF_MOTD'
+============================================================
+ Private Banking Platform Lab - Ops Runner
+============================================================
+ Role        : Terraform / Ansible administration node
+ Terraform   : local execution node; OpenStack state will live in HCP Terraform
+ OpenStack   : managed remotely through the APIs on ${openstack_host_private_ip}
+ Workspace   : /home/ubuntu/workspace
+ Bootstrap   : /var/log/private-banking-lab-ops-runner-bootstrap.log
+============================================================
+EOF_MOTD
+
+terraform version
+ansible --version
+openstack --version
+
+echo "=== Private banking lab ops-runner bootstrap completed ==="

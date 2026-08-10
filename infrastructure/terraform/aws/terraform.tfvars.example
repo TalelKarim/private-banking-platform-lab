@@ -4,3 +4,8 @@ openstack_host_private_ip = "172.31.31.70"
 # Keep null while building the first OpenStack host from Ubuntu.
 # After baking, copy the produced AMI ID here in a local *.auto.tfvars file.
 # golden_ami_id = "ami-0123456789abcdef0"
+
+# Small, stable administration node. It executes Terraform/Ansible but does not
+# host nested workloads itself.
+ops_runner_instance_type     = "t3.small"
+ops_runner_root_volume_size  = 20

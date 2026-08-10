@@ -100,3 +100,20 @@ variable "golden_ami_id" {
     error_message = "golden_ami_id must be null or a valid AMI ID such as ami-0123456789abcdef0."
   }
 }
+
+variable "ops_runner_instance_type" {
+  description = "EC2 instance type used by the Terraform and Ansible administration runner"
+  type        = string
+  default     = "t3.small"
+}
+
+variable "ops_runner_root_volume_size" {
+  description = "Root EBS volume size in GiB for the administration runner"
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.ops_runner_root_volume_size >= 16
+    error_message = "The ops-runner root volume must be at least 16 GiB."
+  }
+}

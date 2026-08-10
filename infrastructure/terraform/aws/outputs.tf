@@ -91,3 +91,43 @@ output "configured_openstack_host_private_ip" {
   description = "Stable private IPv4 that Golden-AMI launches must reuse"
   value       = var.openstack_host_private_ip
 }
+
+output "ops_runner_instance_id" {
+  description = "EC2 instance ID of the Terraform and Ansible administration runner"
+  value       = aws_instance.ops_runner.id
+}
+
+output "ops_runner_instance_type" {
+  description = "EC2 instance type of the administration runner"
+  value       = aws_instance.ops_runner.instance_type
+}
+
+output "ops_runner_private_ip" {
+  description = "Private IPv4 address of the administration runner"
+  value       = aws_instance.ops_runner.private_ip
+}
+
+output "ops_runner_public_ip" {
+  description = "Public IPv4 address of the administration runner"
+  value       = aws_instance.ops_runner.public_ip
+}
+
+output "ops_runner_ssh_command" {
+  description = "Direct SSH command for the administration runner"
+  value       = "ssh -i '${local_sensitive_file.ssh_private_key.filename}' ubuntu@${aws_instance.ops_runner.public_ip}"
+}
+
+output "ops_runner_ec2_instance_connect_command" {
+  description = "EC2 Instance Connect command for the administration runner"
+  value       = "aws ec2-instance-connect ssh --instance-id ${aws_instance.ops_runner.id} --connection-type direct --region ${var.aws_region}"
+}
+
+output "ops_runner_ssm_command" {
+  description = "SSM Session Manager command for the administration runner"
+  value       = "aws ssm start-session --target ${aws_instance.ops_runner.id} --region ${var.aws_region}"
+}
+
+output "ops_runner_bootstrap_log_command" {
+  description = "Command to wait for the administration runner bootstrap and inspect its log"
+  value       = "sudo cloud-init status --wait && sudo tail -n 200 /var/log/private-banking-lab-ops-runner-bootstrap.log"
+}
