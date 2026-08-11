@@ -8,6 +8,7 @@ exec > >(
 
 export DEBIAN_FRONTEND=noninteractive
 
+# These values are rendered by Terraform templatefile().
 TFC_AGENT_VERSION="${tfc_agent_version}"
 TFC_AGENT_NAME="${tfc_agent_name}"
 TFC_AGENT_TOKEN_PARAMETER="${tfc_agent_token_ssm_parameter_name}"
@@ -15,7 +16,12 @@ AWS_REGION="${aws_region}"
 
 echo "=== Starting private banking lab ops-runner bootstrap ==="
 
+# ---------------------------------------------------------------------------
+# Base packages
+# ---------------------------------------------------------------------------
+
 apt-get update
+
 apt-get install -y \
   ca-certificates \
   curl \
@@ -32,90 +38,184 @@ apt-get install -y \
   unzip
 
 systemctl enable --now ssh
+
 systemctl enable --now \
   snap.amazon-ssm-agent.amazon-ssm-agent.service \
   || systemctl enable --now amazon-ssm-agent \
   || true
 
-# Terraform CLI from HashiCorp's official APT repository.
+# ---------------------------------------------------------------------------
+# Terraform CLI
+# ---------------------------------------------------------------------------
+
+# Install Terraform from HashiCorp's official APT repository.
+
 install -d -m 0755 /etc/apt/keyrings
+
 curl -fsSL https://apt.releases.hashicorp.com/gpg \
   | gpg --dearmor --yes -o /etc/apt/keyrings/hashicorp.gpg
+
 chmod 0644 /etc/apt/keyrings/hashicorp.gpg
 
 . /etc/os-release
-printf 'deb [arch=%s signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com %s main\n' \
-  "$(dpkg --print-architecture)" "$VERSION_CODENAME" \
+
+printf \
+  'deb [arch=%s signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com %s main\n' \
+  "$(dpkg --print-architecture)" \
+  "$VERSION_CODENAME" \
   > /etc/apt/sources.list.d/hashicorp.list
 
 apt-get update
 apt-get install -y terraform
 
-# Keep automation tools isolated from Ubuntu's system Python.
+# ---------------------------------------------------------------------------
+# Ansible
+# ---------------------------------------------------------------------------
+
+# Keep automation tooling isolated from Ubuntu's system Python.
+
 python3 -m venv /opt/ansible-venv
+
 /opt/ansible-venv/bin/pip install --upgrade pip
-/opt/ansible-venv/bin/pip install 'ansible-core>=2.19.1,<2.21'
-ln -sf /opt/ansible-venv/bin/ansible /usr/local/bin/ansible
-ln -sf /opt/ansible-venv/bin/ansible-playbook /usr/local/bin/ansible-playbook
+
+/opt/ansible-venv/bin/pip install \
+  'ansible-core>=2.19.1,<2.21'
+
+ln -sf /opt/ansible-venv/bin/ansible \
+  /usr/local/bin/ansible
+
+ln -sf /opt/ansible-venv/bin/ansible-playbook \
+  /usr/local/bin/ansible-playbook
+
+# ---------------------------------------------------------------------------
+# OpenStack CLI
+# ---------------------------------------------------------------------------
 
 python3 -m venv /opt/openstack-client-venv
-/opt/openstack-client-venv/bin/pip install --upgrade pip
-/opt/openstack-client-venv/bin/pip install python-openstackclient
-ln -sf /opt/openstack-client-venv/bin/openstack /usr/local/bin/openstack
 
-# AWS CLI v2 is used only to retrieve the HCP Terraform agent token from
-# SSM Parameter Store at boot. The token itself never appears in Terraform code,
-# rendered EC2 user-data or Terraform state.
+/opt/openstack-client-venv/bin/pip install --upgrade pip
+
+/opt/openstack-client-venv/bin/pip install \
+  python-openstackclient
+
+ln -sf /opt/openstack-client-venv/bin/openstack \
+  /usr/local/bin/openstack
+
+# ---------------------------------------------------------------------------
+# AWS CLI v2
+# ---------------------------------------------------------------------------
+
+# AWS CLI is used to retrieve the HCP Terraform agent token from
+# SSM Parameter Store at boot.
+#
+# The token itself is never stored in Terraform code or rendered user-data.
+
 rm -rf /tmp/aws /tmp/awscliv2.zip
-curl -fsSLo /tmp/awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+
+curl -fsSLo \
+  /tmp/awscliv2.zip \
+  https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+
 unzip -q /tmp/awscliv2.zip -d /tmp
+
 if command -v aws >/dev/null 2>&1; then
   /tmp/aws/install --update
 else
   /tmp/aws/install
 fi
+
 rm -rf /tmp/aws /tmp/awscliv2.zip
 
-# Install a pinned HCP Terraform Agent binary. It may auto-update only within the
-# same patch line, keeping rebuilds predictable while still receiving patch fixes.
-install -d -m 0755 -o ubuntu -g ubuntu /opt/tfc-agent
-cd /tmp
-curl -fsSLO "https://releases.hashicorp.com/tfc-agent/$TFC_AGENT_VERSION/tfc-agent_$TFC_AGENT_VERSION_linux_amd64.zip"
-curl -fsSLO "https://releases.hashicorp.com/tfc-agent/$TFC_AGENT_VERSION/tfc-agent_$TFC_AGENT_VERSION_SHA256SUMS"
-grep "tfc-agent_$TFC_AGENT_VERSION_linux_amd64.zip" \
-  "tfc-agent_$TFC_AGENT_VERSION_SHA256SUMS" \
-  | sha256sum -c -
-unzip -oq "tfc-agent_$TFC_AGENT_VERSION_linux_amd64.zip" -d /opt/tfc-agent
-chmod 0755 /opt/tfc-agent/tfc-agent /opt/tfc-agent/tfc-agent-core
-chown -R ubuntu:ubuntu /opt/tfc-agent
-rm -f "/tmp/tfc-agent_$TFC_AGENT_VERSION_linux_amd64.zip" \
-  "/tmp/tfc-agent_$TFC_AGENT_VERSION_SHA256SUMS"
+# ---------------------------------------------------------------------------
+# HCP Terraform Agent
+# ---------------------------------------------------------------------------
 
-# Retrieve the agent-pool token at runtime. Disable xtrace around the secret so
-# it cannot leak into cloud-init logs.
+# Install the pinned HCP Terraform Agent.
+
+
+install -d \
+  -m 0755 \
+  -o ubuntu \
+  -g ubuntu \
+  /opt/tfc-agent
+
+cd /tmp
+
+curl -fsSLO \
+  "https://releases.hashicorp.com/tfc-agent/$${TFC_AGENT_VERSION}/tfc-agent_$${TFC_AGENT_VERSION}_linux_amd64.zip"
+
+curl -fsSLO \
+  "https://releases.hashicorp.com/tfc-agent/$${TFC_AGENT_VERSION}/tfc-agent_$${TFC_AGENT_VERSION}_SHA256SUMS"
+
+grep \
+  "tfc-agent_$${TFC_AGENT_VERSION}_linux_amd64.zip" \
+  "tfc-agent_$${TFC_AGENT_VERSION}_SHA256SUMS" \
+  | sha256sum -c -
+
+unzip -oq \
+  "tfc-agent_$${TFC_AGENT_VERSION}_linux_amd64.zip" \
+  -d /opt/tfc-agent
+
+chmod 0755 \
+  /opt/tfc-agent/tfc-agent \
+  /opt/tfc-agent/tfc-agent-core
+
+chown -R ubuntu:ubuntu /opt/tfc-agent
+
+rm -f \
+  "/tmp/tfc-agent_$${TFC_AGENT_VERSION}_linux_amd64.zip" \
+  "/tmp/tfc-agent_$${TFC_AGENT_VERSION}_SHA256SUMS"
+
+# ---------------------------------------------------------------------------
+# HCP Terraform Agent token
+# ---------------------------------------------------------------------------
+
+# Retrieve the agent-pool token at runtime.
+#
+# Disable shell xtrace before touching the secret so the token can never
+# appear in cloud-init logs.
+
 set +x
+
 TFC_AGENT_TOKEN=""
+
 for attempt in $(seq 1 30); do
   if TFC_AGENT_TOKEN=$(aws ssm get-parameter \
     --region "$AWS_REGION" \
     --name "$TFC_AGENT_TOKEN_PARAMETER" \
     --with-decryption \
     --query 'Parameter.Value' \
-    --output text 2>/tmp/tfc-agent-token-error.log); then
+    --output text \
+    2>/tmp/tfc-agent-token-error.log); then
+
     if [ -n "$TFC_AGENT_TOKEN" ] && [ "$TFC_AGENT_TOKEN" != "None" ]; then
       break
     fi
   fi
+
   sleep 5
 done
 
 if [ -z "$TFC_AGENT_TOKEN" ] || [ "$TFC_AGENT_TOKEN" = "None" ]; then
-  echo "ERROR: unable to retrieve HCP Terraform agent token from SSM parameter $TFC_AGENT_TOKEN_PARAMETER" >&2
+  echo \
+    "ERROR: unable to retrieve HCP Terraform agent token from SSM parameter $TFC_AGENT_TOKEN_PARAMETER" \
+    >&2
+
   cat /tmp/tfc-agent-token-error.log >&2 || true
   exit 1
 fi
 
-install -m 0600 -o root -g root /dev/null /etc/tfc-agent.env
+# ---------------------------------------------------------------------------
+# Agent environment
+# ---------------------------------------------------------------------------
+
+install \
+  -m 0600 \
+  -o root \
+  -g root \
+  /dev/null \
+  /etc/tfc-agent.env
+
 {
   printf 'TFC_AGENT_TOKEN=%s\n' "$TFC_AGENT_TOKEN"
   printf 'TFC_AGENT_NAME=%s\n' "$TFC_AGENT_NAME"
@@ -123,8 +223,15 @@ install -m 0600 -o root -g root /dev/null /etc/tfc-agent.env
 } > /etc/tfc-agent.env
 
 unset TFC_AGENT_TOKEN
+
 rm -f /tmp/tfc-agent-token-error.log
+
+# Secret handling is finished. Re-enable command tracing.
 set -x
+
+# ---------------------------------------------------------------------------
+# HCP Terraform Agent systemd service
+# ---------------------------------------------------------------------------
 
 cat > /etc/systemd/system/tfc-agent.service <<'EOF_TFC_AGENT_SERVICE'
 [Unit]
@@ -152,25 +259,42 @@ EOF_TFC_AGENT_SERVICE
 systemctl daemon-reload
 systemctl enable --now tfc-agent.service
 
-install -d -m 0755 -o ubuntu -g ubuntu /home/ubuntu/workspace
+# ---------------------------------------------------------------------------
+# Workspace
+# ---------------------------------------------------------------------------
+
+install -d \
+  -m 0755 \
+  -o ubuntu \
+  -g ubuntu \
+  /home/ubuntu/workspace
+
+# ---------------------------------------------------------------------------
+# MOTD
+# ---------------------------------------------------------------------------
 
 cat > /etc/motd <<'EOF_MOTD'
 ============================================================
  Private Banking Platform Lab - Ops Runner
 ============================================================
- Role        : Terraform / Ansible / HCP Terraform Agent
- Terraform   : HCP Agent execution node for private OpenStack
- OpenStack   : managed through APIs on ${openstack_host_private_ip}
- Workspace   : /home/ubuntu/workspace
- Agent       : systemctl status tfc-agent
+ Role        : Terraform / Ansible administration runner
+ Terraform   : installed
+ Ansible     : /opt/ansible-venv
+ OpenStack   : /opt/openstack-client-venv
+ HCP Agent   : tfc-agent.service
  Bootstrap   : /var/log/private-banking-lab-ops-runner-bootstrap.log
 ============================================================
 EOF_MOTD
+
+# ---------------------------------------------------------------------------
+# Final validation
+# ---------------------------------------------------------------------------
 
 terraform version
 ansible --version
 openstack --version
 aws --version
+
 systemctl --no-pager --full status tfc-agent.service
 
 echo "=== Private banking lab ops-runner bootstrap completed ==="
