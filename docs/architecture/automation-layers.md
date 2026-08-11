@@ -16,9 +16,10 @@ Project Ansible
 Kolla-Ansible
   -> Docker bootstrap, prechecks, OpenStack container deployment, post-deploy
 
-Terraform OpenStack (executed on the ops runner)
+Terraform OpenStack (HCP Terraform Agent execution on the ops runner)
   -> tenant networks, router, images, flavors, volumes and virtual machines
-  -> state will be stored in HCP Terraform with Local execution mode
+  -> Git/VCS triggers runs in HCP Terraform
+  -> HCP Terraform stores state/run history while the EC2 ops runner executes plan/apply
 
 Ansible workload layer (later executed on the ops runner)
   -> PostgreSQL, Jenkins, monitoring and later OpenShift node configuration
