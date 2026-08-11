@@ -9,3 +9,9 @@ openstack_host_private_ip = "172.31.31.70"
 # host nested workloads itself.
 ops_runner_instance_type     = "t3.small"
 ops_runner_root_volume_size  = 20
+
+# HCP Terraform Agent. The secret token itself is NOT a Terraform variable.
+# Store it once as an SSM Parameter Store SecureString under this path.
+tfc_agent_version                  = "1.30.1"
+tfc_agent_name                     = "private-banking-ops-runner-01"
+tfc_agent_token_ssm_parameter_name = "/private-banking-platform-lab/hcp-terraform/agent-token"

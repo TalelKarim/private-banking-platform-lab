@@ -15,9 +15,10 @@ AWS EC2 + nested KVM
 The repository now contains the complete automation needed to deploy an
 OpenStack 2026.1 all-in-one control plane on the AWS lab host.
 
-- Terraform AWS creates the EC2 host and two persistent EBS volumes.
+- Terraform AWS creates the OpenStack EC2 host, its storage, and a separate ops-runner EC2.
 - Minimal cloud-init makes the machine automation-ready and mounts `/data`.
 - Project Ansible prepares KVM, host networking, Cinder LVM and Kolla-Ansible.
+- The ops runner is prepared for local Terraform/OpenStack execution and later Ansible workloads.
 - Kolla-Ansible bootstraps Docker, runs prechecks and deploys OpenStack.
 - Generated passwords and admin credentials stay outside Git under `/data`.
 

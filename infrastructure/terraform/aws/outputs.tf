@@ -131,3 +131,18 @@ output "ops_runner_bootstrap_log_command" {
   description = "Command to wait for the administration runner bootstrap and inspect its log"
   value       = "sudo cloud-init status --wait && sudo tail -n 200 /var/log/private-banking-lab-ops-runner-bootstrap.log"
 }
+
+output "ops_runner_tfc_agent_status_command" {
+  description = "Command to inspect the HCP Terraform Agent service"
+  value       = "sudo systemctl status tfc-agent --no-pager --full"
+}
+
+output "ops_runner_tfc_agent_logs_command" {
+  description = "Command to follow HCP Terraform Agent logs"
+  value       = "sudo journalctl -u tfc-agent -f"
+}
+
+output "ops_runner_tfc_agent_token_parameter_name" {
+  description = "SSM Parameter Store path from which the ops-runner reads its HCP Terraform agent-pool token"
+  value       = var.tfc_agent_token_ssm_parameter_name
+}

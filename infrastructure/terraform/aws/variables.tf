@@ -117,3 +117,36 @@ variable "ops_runner_root_volume_size" {
     error_message = "The ops-runner root volume must be at least 16 GiB."
   }
 }
+
+variable "tfc_agent_version" {
+  description = "Pinned HCP Terraform Agent version installed on the ops-runner"
+  type        = string
+  default     = "1.30.1"
+
+  validation {
+    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.tfc_agent_version))
+    error_message = "tfc_agent_version must be a semantic version such as 1.30.1."
+  }
+}
+
+variable "tfc_agent_name" {
+  description = "Display name registered by the ops-runner in the HCP Terraform agent pool"
+  type        = string
+  default     = "private-banking-ops-runner-01"
+
+  validation {
+    condition     = length(trimspace(var.tfc_agent_name)) > 0
+    error_message = "tfc_agent_name must not be empty."
+  }
+}
+
+variable "tfc_agent_token_ssm_parameter_name" {
+  description = "Existing SSM Parameter Store SecureString containing the HCP Terraform agent-pool token. The secret value is intentionally not managed by Terraform."
+  type        = string
+  default     = "/private-banking-platform-lab/hcp-terraform/agent-token"
+
+  validation {
+    condition     = startswith(var.tfc_agent_token_ssm_parameter_name, "/") && length(var.tfc_agent_token_ssm_parameter_name) > 1
+    error_message = "tfc_agent_token_ssm_parameter_name must be an absolute SSM parameter path such as /private-banking-platform-lab/hcp-terraform/agent-token."
+  }
+}

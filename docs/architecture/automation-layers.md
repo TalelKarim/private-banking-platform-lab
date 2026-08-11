@@ -2,27 +2,32 @@
 
 ```text
 Terraform AWS
-  -> EC2, EBS, IAM, Security Group, Spot, nested virtualization
+  -> OpenStack EC2 host, EBS, IAM, Security Groups, Spot, nested virtualization
+  -> dedicated ops-runner EC2 for Terraform/OpenStack and later Ansible execution
 
 Minimal cloud-init
-  -> Python, Git, Make, SSM/SSH readiness, persistent /data mount
+  -> OpenStack host: Python, Git, Make, SSM/SSH readiness, persistent /data mount
+  -> ops runner: Terraform CLI, Ansible CLI, OpenStack CLI and administration workspace
 
 Project Ansible
   -> KVM host prerequisites, kernel/network settings, os-host <-> os-ext veth,
-     outbound NAT, Cinder LVM, Terraform CLI, Kolla-Ansible installation/config
+     outbound NAT, Cinder LVM, Kolla-Ansible installation/config
 
 Kolla-Ansible
   -> Docker bootstrap, prechecks, OpenStack container deployment, post-deploy
 
-Terraform OpenStack
+Terraform OpenStack (executed on the ops runner)
   -> tenant networks, router, images, flavors, volumes and virtual machines
+  -> state will be stored in HCP Terraform with Local execution mode
 
-Ansible workload layer
+Ansible workload layer (later executed on the ops runner)
   -> PostgreSQL, Jenkins, monitoring and later OpenShift node configuration
 ```
 
 The separation is intentional: every layer owns one type of state and can be
-rerun without duplicating the responsibility of another layer.
+rerun without duplicating the responsibility of another layer. The ops runner is
+an administration client of OpenStack; it does not host OpenStack services or
+nested OpenStack virtual machines.
 
 ## Persistent data ownership rule
 
