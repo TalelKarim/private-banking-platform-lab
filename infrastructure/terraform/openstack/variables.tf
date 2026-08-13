@@ -136,3 +136,99 @@ variable "small_flavor_disk_gb" {
   type        = number
   default     = 10
 }
+
+variable "medium_flavor_name" {
+  description = "Name of the reusable medium Nova flavor"
+  type        = string
+  default     = "lab.medium"
+}
+
+variable "medium_flavor_ram_mb" {
+  description = "RAM in MiB assigned to the reusable medium Nova flavor"
+  type        = number
+  default     = 4096
+}
+
+variable "medium_flavor_vcpus" {
+  description = "vCPU count assigned to the reusable medium Nova flavor"
+  type        = number
+  default     = 2
+}
+
+variable "medium_flavor_disk_gb" {
+  description = "Root disk size in GiB assigned to the reusable medium Nova flavor"
+  type        = number
+  default     = 20
+}
+
+variable "ubuntu_image_name" {
+  description = "Name of the Terraform-managed Ubuntu 24.04 Glance base image"
+  type        = string
+  default     = "ubuntu-24.04-noble-amd64-20260801"
+}
+
+variable "ubuntu_image_source_url" {
+  description = "Pinned Canonical Ubuntu 24.04 cloud image used to populate Glance"
+  type        = string
+  default     = "https://cloud-images.ubuntu.com/releases/noble/release-20260801/ubuntu-24.04-server-cloudimg-amd64.img"
+
+  validation {
+    condition     = startswith(var.ubuntu_image_source_url, "https://")
+    error_message = "ubuntu_image_source_url must use HTTPS."
+  }
+}
+
+variable "workload_keypair_name" {
+  description = "Nova keypair name shared by Terraform-managed lab workloads"
+  type        = string
+  default     = "private-banking-lab-workloads"
+}
+
+variable "workload_ssh_public_key" {
+  description = "OpenSSH public key injected into Terraform-managed workload VMs; set this in the HCP Terraform workspace"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition = anytrue([
+      startswith(trimspace(var.workload_ssh_public_key), "ssh-rsa "),
+      startswith(trimspace(var.workload_ssh_public_key), "ssh-ed25519 "),
+      startswith(trimspace(var.workload_ssh_public_key), "ecdsa-sha2-"),
+    ])
+    error_message = "workload_ssh_public_key must be an OpenSSH-formatted public key."
+  }
+}
+
+variable "jenkins_instance_name" {
+  description = "Name of the persistent Jenkins controller VM"
+  type        = string
+  default     = "jenkins-controller"
+}
+
+variable "jenkins_fixed_ip" {
+  description = "Stable private IPv4 assigned to the Jenkins controller"
+  type        = string
+  default     = "10.10.0.20"
+
+  validation {
+    condition     = can(cidrnetmask("${var.jenkins_fixed_ip}/32"))
+    error_message = "jenkins_fixed_ip must be a valid IPv4 address."
+  }
+}
+
+variable "jenkins_data_volume_size_gb" {
+  description = "Persistent Cinder volume size reserved for Jenkins home and build state"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.jenkins_data_volume_size_gb >= 20
+    error_message = "jenkins_data_volume_size_gb must be at least 20 GiB."
+  }
+}
+
+variable "jenkins_security_group_name" {
+  description = "Name of the Jenkins application security group"
+  type        = string
+  default     = "jenkins-controller"
+}

@@ -17,7 +17,8 @@ Kolla-Ansible
   -> Docker bootstrap, prechecks, OpenStack container deployment, post-deploy
 
 Terraform OpenStack (HCP Terraform Agent execution on the ops runner)
-  -> tenant networks, router, images, flavors, volumes and virtual machines
+  -> tenant networks, router, reusable images/flavors and explicit VM ports
+  -> persistent platform VMs, floating IP associations and Cinder data volumes
   -> Git/VCS triggers runs in HCP Terraform
   -> HCP Terraform stores state/run history while the EC2 ops runner executes plan/apply
 

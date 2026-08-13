@@ -5,3 +5,11 @@ resource "openstack_compute_flavor_v2" "small" {
   disk      = var.small_flavor_disk_gb
   is_public = true
 }
+
+resource "openstack_compute_flavor_v2" "medium" {
+  name      = var.medium_flavor_name
+  ram       = var.medium_flavor_ram_mb
+  vcpus     = var.medium_flavor_vcpus
+  disk      = var.medium_flavor_disk_gb
+  is_public = true
+}

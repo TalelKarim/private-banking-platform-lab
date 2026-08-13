@@ -51,3 +51,44 @@ output "small_flavor" {
     disk_gb = openstack_compute_flavor_v2.small.disk
   }
 }
+
+output "medium_flavor" {
+  description = "Reusable medium Nova flavor for persistent platform services"
+  value = {
+    id      = openstack_compute_flavor_v2.medium.id
+    name    = openstack_compute_flavor_v2.medium.name
+    ram_mb  = openstack_compute_flavor_v2.medium.ram
+    vcpus   = openstack_compute_flavor_v2.medium.vcpus
+    disk_gb = openstack_compute_flavor_v2.medium.disk
+  }
+}
+
+output "ubuntu_2404_image" {
+  description = "Terraform-managed Ubuntu 24.04 Glance base image"
+  value = {
+    id     = openstack_images_image_v2.ubuntu_2404.id
+    name   = openstack_images_image_v2.ubuntu_2404.name
+    status = openstack_images_image_v2.ubuntu_2404.status
+  }
+}
+
+output "workload_keypair" {
+  description = "Nova keypair used by Terraform-managed workloads"
+  value = {
+    name        = openstack_compute_keypair_v2.workload.name
+    fingerprint = openstack_compute_keypair_v2.workload.fingerprint
+  }
+}
+
+output "jenkins_controller" {
+  description = "First persistent OpenStack platform VM and its attached resources"
+  value = {
+    instance_id      = module.jenkins_controller.instance_id
+    name             = module.jenkins_controller.instance_name
+    fixed_ip         = module.jenkins_controller.fixed_ip
+    floating_ip      = module.jenkins_controller.floating_ip
+    port_id          = module.jenkins_controller.port_id
+    data_volume_id   = module.jenkins_controller.data_volume_id
+    data_volume_path = module.jenkins_controller.data_volume_device
+  }
+}

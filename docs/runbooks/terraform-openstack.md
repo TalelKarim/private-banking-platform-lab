@@ -44,15 +44,23 @@ These values reproduce the topology that was already validated manually before
 the Golden AMI was baked. The Golden baseline itself is workload-free, so these
 resources are now created and owned only by Terraform.
 
-## Expected first foundation run
+## Compute foundation
 
-The HCP Terraform smoke-test resource is intentionally kept during this first
-persistent foundation apply. This keeps the migration low-risk: the first real
-foundation run should only add networking, security and flavor resources.
+The networking foundation is followed by the first persistent compute layer:
 
-After the foundation is validated end to end, remove the smoke-test resource in
-a separate small commit. Do not apply if the first foundation plan proposes
-deleting unrelated OpenStack resources.
+```text
+Ubuntu 24.04 Glance image
+lab.medium reusable flavor
+workload SSH keypair
+jenkins-controller port at 10.10.0.20
+jenkins-controller VM
+30 GiB Cinder data volume
+floating IP allocated from public-net
+```
+
+The VM is intentionally the future Jenkins controller rather than a disposable
+smoke-test instance. Jenkins software configuration remains outside Terraform
+and will be owned by Ansible. See `docs/runbooks/openstack-compute.md`.
 
 ## Validation after apply
 
@@ -81,6 +89,5 @@ lab-management
 lab.small
 ```
 
-The next Terraform phase will add the reusable Ubuntu image and the first real
-workload VM, then validate floating-IP and Cinder attachment end to end before
-Jenkins/Ansible configuration begins.
+After the compute foundation validates end to end, the next phase is Ansible
+configuration of the existing Jenkins VM and its persistent Cinder data volume.
