@@ -36,7 +36,7 @@ public-subnet    gateway 192.168.250.1, allocation 192.168.250.100-199
 private-net      tenant network
 private-subnet   10.10.0.0/24, DHCP enabled
 lab-router       SNAT + private-subnet interface
-lab-management   baseline management security group
+lab-management   baseline management security group, including SSH from the AWS ops-runner subnet
 lab.small        2 vCPU / 2048 MiB / 10 GiB
 ```
 

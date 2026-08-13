@@ -15,3 +15,9 @@ ops_runner_root_volume_size  = 20
 tfc_agent_version                  = "1.30.1"
 tfc_agent_name                     = "private-banking-ops-runner-01"
 tfc_agent_token_ssm_parameter_name = "/private-banking-platform-lab/hcp-terraform/agent-token"
+
+# Routed administration of OpenStack workload floating IPs.
+openstack_external_network_cidr = "192.168.250.0/24"
+
+# The matching private key is stored outside Terraform as an SSM SecureString.
+workload_ssh_private_key_ssm_parameter_name = "/private-banking-platform-lab/openstack/workload-ssh-private-key"

@@ -6,6 +6,8 @@ NEUTRON_IF="{{ openstack_external_neutron_interface }}"
 HOST_ADDR="{{ openstack_external_host_address }}"
 UPLINK_IF="{{ openstack_management_interface }}"
 EXTERNAL_CIDR="{{ openstack_external_cidr }}"
+AWS_MANAGEMENT_CIDR="{{ openstack_aws_management_cidr }}"
+SSH_PORT="{{ openstack_management_ssh_port }}"
 
 if ! ip link show "$HOST_IF" >/dev/null 2>&1; then
   ip link add "$HOST_IF" type veth peer name "$NEUTRON_IF"
@@ -20,6 +22,19 @@ iptables -C FORWARD -i "$HOST_IF" -o "$UPLINK_IF" -j ACCEPT 2>/dev/null \
 
 iptables -C FORWARD -i "$UPLINK_IF" -o "$HOST_IF" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
   || iptables -A FORWARD -i "$UPLINK_IF" -o "$HOST_IF" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+# Allow the dedicated AWS management subnet to initiate SSH towards any
+# OpenStack floating IP. AWS security groups still restrict which EC2 can
+# reach this middlebox, while Neutron security groups enforce access again at
+# the workload port.
+iptables -C FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
+  -s "$AWS_MANAGEMENT_CIDR" -d "$EXTERNAL_CIDR" \
+  -p tcp --dport "$SSH_PORT" \
+  -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null \
+  || iptables -A FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
+    -s "$AWS_MANAGEMENT_CIDR" -d "$EXTERNAL_CIDR" \
+    -p tcp --dport "$SSH_PORT" \
+    -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
 
 iptables -t nat -C POSTROUTING -s "$EXTERNAL_CIDR" -o "$UPLINK_IF" -j MASQUERADE 2>/dev/null \
   || iptables -t nat -A POSTROUTING -s "$EXTERNAL_CIDR" -o "$UPLINK_IF" -j MASQUERADE

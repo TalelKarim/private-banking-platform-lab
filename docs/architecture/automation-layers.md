@@ -4,14 +4,17 @@
 Terraform AWS
   -> OpenStack EC2 host, EBS, IAM, Security Groups, Spot, nested virtualization
   -> dedicated ops-runner EC2 for Terraform/OpenStack and later Ansible execution
+  -> VPC route 192.168.250.0/24 -> lab-host ENI for workload floating-IP administration
 
 Minimal cloud-init
   -> OpenStack host: Python, Git, Make, SSM/SSH readiness, persistent /data mount
   -> ops runner: Terraform CLI, Ansible CLI, OpenStack CLI and administration workspace
+  -> ops runner retrieves the workload SSH private key from SSM SecureString at boot
 
 Project Ansible
   -> KVM host prerequisites, kernel/network settings, os-host <-> os-ext veth,
-     outbound NAT, Cinder LVM, Kolla-Ansible installation/config
+     outbound NAT, routed SSH forwarding to floating IPs, Cinder LVM,
+     Kolla-Ansible installation/config
 
 Kolla-Ansible
   -> Docker bootstrap, prechecks, OpenStack container deployment, post-deploy

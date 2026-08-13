@@ -14,6 +14,16 @@ resource "openstack_networking_secgroup_rule_v2" "management_ssh" {
   security_group_id = openstack_networking_secgroup_v2.management.id
 }
 
+resource "openstack_networking_secgroup_rule_v2" "management_ssh_ops_runner" {
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  protocol          = "tcp"
+  port_range_min    = 22
+  port_range_max    = 22
+  remote_ip_prefix  = var.ops_runner_management_cidr
+  security_group_id = openstack_networking_secgroup_v2.management.id
+}
+
 resource "openstack_networking_secgroup_rule_v2" "management_icmp_external" {
   direction         = "ingress"
   ethertype         = "IPv4"

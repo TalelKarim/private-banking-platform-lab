@@ -146,3 +146,22 @@ output "ops_runner_tfc_agent_token_parameter_name" {
   description = "SSM Parameter Store path from which the ops-runner reads its HCP Terraform agent-pool token"
   value       = var.tfc_agent_token_ssm_parameter_name
 }
+
+output "openstack_external_route" {
+  description = "VPC route that sends the OpenStack provider network to the lab-host ENI"
+  value = {
+    route_table_id         = local.selected_route_table_id
+    destination_cidr_block = aws_route.openstack_external_via_lab_host.destination_cidr_block
+    network_interface_id   = aws_instance.lab.primary_network_interface_id
+  }
+}
+
+output "ops_runner_workload_ssh_private_key_path" {
+  description = "Private key path used by Ansible on the ops runner for OpenStack workload VMs"
+  value       = "/home/ubuntu/.ssh/private-banking-openstack-workloads"
+}
+
+output "ops_runner_workload_ssh_key_parameter_name" {
+  description = "SSM SecureString path read by the ops runner for the OpenStack workload private key"
+  value       = var.workload_ssh_private_key_ssm_parameter_name
+}

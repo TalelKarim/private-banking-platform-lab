@@ -84,8 +84,18 @@ resource "aws_vpc_security_group_ingress_rule" "ssh_from_ops_runner" {
   security_group_id            = aws_security_group.lab.id
   referenced_security_group_id = aws_security_group.ops_runner.id
 
-  description = "SSH from the dedicated ops runner for future Ansible administration"
+  description = "SSH from the dedicated ops runner to the lab host and routed OpenStack workload floating IPs"
   ip_protocol = "tcp"
   from_port   = 22
   to_port     = 22
+}
+
+# Route the OpenStack provider network through the lab-host EC2. The lab host is
+# a deliberate VPC middlebox (source_dest_check=false) and forwards this traffic
+# through os-host <-> os-ext to Neutron. This single route covers every current
+# and future workload floating IP allocated from public-net.
+resource "aws_route" "openstack_external_via_lab_host" {
+  route_table_id         = local.selected_route_table_id
+  destination_cidr_block = var.openstack_external_network_cidr
+  network_interface_id   = aws_instance.lab.primary_network_interface_id
 }

@@ -51,6 +51,25 @@ resource "aws_iam_role_policy" "ops_runner_hcp_agent_token" {
   })
 }
 
+resource "aws_iam_role_policy" "ops_runner_workload_ssh_key" {
+  name = "${var.project_name}-ops-runner-workload-ssh-key"
+  role = aws_iam_role.ops_runner.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${var.workload_ssh_private_key_ssm_parameter_name}"
+      }
+    ]
+  })
+}
+
 resource "aws_security_group" "ops_runner" {
   name_prefix = "${var.project_name}-ops-runner-"
   description = "Security group for the Terraform and Ansible administration runner"
@@ -130,11 +149,12 @@ resource "aws_instance" "ops_runner" {
   user_data = templatefile(
     "${path.module}/cloud-init/ops-runner-user-data.sh.tftpl",
     {
-      aws_region                         = var.aws_region
-      openstack_host_private_ip          = var.openstack_host_private_ip
-      tfc_agent_name                     = var.tfc_agent_name
-      tfc_agent_token_ssm_parameter_name = var.tfc_agent_token_ssm_parameter_name
-      tfc_agent_version                  = var.tfc_agent_version
+      aws_region                                  = var.aws_region
+      openstack_host_private_ip                   = var.openstack_host_private_ip
+      tfc_agent_name                              = var.tfc_agent_name
+      tfc_agent_token_ssm_parameter_name          = var.tfc_agent_token_ssm_parameter_name
+      tfc_agent_version                           = var.tfc_agent_version
+      workload_ssh_private_key_ssm_parameter_name = var.workload_ssh_private_key_ssm_parameter_name
     }
   )
 
@@ -151,6 +171,7 @@ resource "aws_instance" "ops_runner" {
   depends_on = [
     aws_iam_role_policy_attachment.ops_runner_ssm_core,
     aws_iam_role_policy.ops_runner_hcp_agent_token,
+    aws_iam_role_policy.ops_runner_workload_ssh_key,
     local_sensitive_file.ssh_private_key
   ]
 }

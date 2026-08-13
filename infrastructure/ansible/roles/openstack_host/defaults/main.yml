@@ -9,6 +9,8 @@ openstack_external_host_interface: os-host
 openstack_external_neutron_interface: os-ext
 openstack_external_cidr: 192.168.250.0/24
 openstack_external_host_address: 192.168.250.1/24
+openstack_aws_management_cidr: 172.31.16.0/20
+openstack_management_ssh_port: 22
 
 cinder_volume_group: cinder-volumes
 

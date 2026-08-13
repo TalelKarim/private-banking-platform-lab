@@ -24,6 +24,8 @@ foundation above it.
 - HCP Terraform stores the OpenStack state/run history while Git changes trigger plans on the EC2 agent.
 - Terraform OpenStack owns the provider network, tenant network, router, security groups, reusable flavors, Ubuntu base image and workload VMs.
 - The first persistent workload is `jenkins-controller` on `10.10.0.20`, with a dedicated Cinder data volume and a floating IP for controlled administration.
+- The AWS subnet route table sends the complete OpenStack provider network (`192.168.250.0/24`) to the lab-host ENI, so the ops-runner can manage any present or future workload floating IP over SSH.
+- The ops-runner retrieves the dedicated OpenStack workload private key from SSM Parameter Store at boot; the matching public key is injected by Terraform OpenStack.
 - Generated passwords and admin credentials stay outside Git under `/data`.
 
 ## Main commands
@@ -69,4 +71,4 @@ private-banking-platform-lab/
 
 ## Current next step
 
-The OpenStack compute foundation is now defined in Terraform. Configure the HCP workspace `workload_ssh_public_key`, review the VCS-triggered plan, and create the first persistent `jenkins-controller` VM. See `docs/runbooks/openstack-compute.md`.
+Complete the routed administration path from the AWS ops-runner to OpenStack workload floating IPs, then validate direct SSH to `jenkins-controller`. The next layer installs and configures Jenkins through Ansible without changing the VM or network foundation. See `docs/runbooks/openstack-workload-access.md`.

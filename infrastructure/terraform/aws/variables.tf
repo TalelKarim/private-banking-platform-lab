@@ -89,6 +89,17 @@ variable "openstack_host_private_ip" {
   }
 }
 
+variable "openstack_external_network_cidr" {
+  description = "OpenStack provider-network CIDR routed by the VPC to the lab-host ENI"
+  type        = string
+  default     = "192.168.250.0/24"
+
+  validation {
+    condition     = can(cidrnetmask(var.openstack_external_network_cidr))
+    error_message = "openstack_external_network_cidr must be a valid IPv4 CIDR."
+  }
+}
+
 variable "golden_ami_id" {
   description = "Optional baked OpenStack AMI. Null keeps bootstrap mode on the stock Ubuntu AMI."
   type        = string
@@ -148,5 +159,16 @@ variable "tfc_agent_token_ssm_parameter_name" {
   validation {
     condition     = startswith(var.tfc_agent_token_ssm_parameter_name, "/") && length(var.tfc_agent_token_ssm_parameter_name) > 1
     error_message = "tfc_agent_token_ssm_parameter_name must be an absolute SSM parameter path such as /private-banking-platform-lab/hcp-terraform/agent-token."
+  }
+}
+
+variable "workload_ssh_private_key_ssm_parameter_name" {
+  description = "Existing SSM SecureString containing the private SSH key used by Ansible to manage OpenStack workload VMs"
+  type        = string
+  default     = "/private-banking-platform-lab/openstack/workload-ssh-private-key"
+
+  validation {
+    condition     = startswith(var.workload_ssh_private_key_ssm_parameter_name, "/") && length(var.workload_ssh_private_key_ssm_parameter_name) > 1
+    error_message = "workload_ssh_private_key_ssm_parameter_name must be an absolute SSM parameter path."
   }
 }

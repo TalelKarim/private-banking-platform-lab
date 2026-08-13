@@ -113,6 +113,17 @@ variable "management_source_cidr" {
   }
 }
 
+variable "ops_runner_management_cidr" {
+  description = "AWS subnet CIDR whose ops-runner may SSH to workload floating IPs through the lab-host router"
+  type        = string
+  default     = "172.31.16.0/20"
+
+  validation {
+    condition     = can(cidrnetmask(var.ops_runner_management_cidr))
+    error_message = "ops_runner_management_cidr must be a valid IPv4 CIDR."
+  }
+}
+
 variable "small_flavor_name" {
   description = "Name of the baseline small Nova flavor"
   type        = string

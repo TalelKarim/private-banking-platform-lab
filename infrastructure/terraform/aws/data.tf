@@ -42,6 +42,32 @@ data "aws_subnet" "selected" {
   id = local.selected_subnet_id
 }
 
+data "aws_route_tables" "selected_subnet" {
+  vpc_id = data.aws_vpc.default.id
+
+  filter {
+    name   = "association.subnet-id"
+    values = [data.aws_subnet.selected.id]
+  }
+}
+
+data "aws_route_table" "main" {
+  vpc_id = data.aws_vpc.default.id
+
+  filter {
+    name   = "association.main"
+    values = ["true"]
+  }
+}
+
+locals {
+  selected_route_table_id = (
+    length(data.aws_route_tables.selected_subnet.ids) == 1
+    ? data.aws_route_tables.selected_subnet.ids[0]
+    : data.aws_route_table.main.id
+  )
+}
+
 data "aws_ssm_parameter" "ubuntu_2404_ami" {
   name = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
 }

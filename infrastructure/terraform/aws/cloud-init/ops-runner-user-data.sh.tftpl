@@ -12,6 +12,8 @@ export DEBIAN_FRONTEND=noninteractive
 TFC_AGENT_VERSION="${tfc_agent_version}"
 TFC_AGENT_NAME="${tfc_agent_name}"
 TFC_AGENT_TOKEN_PARAMETER="${tfc_agent_token_ssm_parameter_name}"
+WORKLOAD_SSH_PRIVATE_KEY_PARAMETER="${workload_ssh_private_key_ssm_parameter_name}"
+WORKLOAD_SSH_PRIVATE_KEY_PATH="/home/ubuntu/.ssh/private-banking-openstack-workloads"
 AWS_REGION="${aws_region}"
 
 echo "=== Starting private banking lab ops-runner bootstrap ==="
@@ -125,6 +127,56 @@ else
 fi
 
 rm -rf /tmp/aws /tmp/awscliv2.zip
+
+# ---------------------------------------------------------------------------
+# OpenStack workload SSH private key
+# ---------------------------------------------------------------------------
+
+# The private key is injected once into SSM Parameter Store outside Terraform.
+# The runner retrieves it at boot so Ansible can administer every workload VM
+# that uses the matching Nova public key. The secret never enters Terraform
+# state or rendered user-data.
+
+install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/.ssh
+
+set +x
+
+WORKLOAD_SSH_PRIVATE_KEY=""
+
+for attempt in $(seq 1 30); do
+  if WORKLOAD_SSH_PRIVATE_KEY=$(aws ssm get-parameter \
+    --region "$AWS_REGION" \
+    --name "$WORKLOAD_SSH_PRIVATE_KEY_PARAMETER" \
+    --with-decryption \
+    --query 'Parameter.Value' \
+    --output text \
+    2>/tmp/workload-ssh-key-error.log); then
+
+    if [ -n "$WORKLOAD_SSH_PRIVATE_KEY" ] && [ "$WORKLOAD_SSH_PRIVATE_KEY" != "None" ]; then
+      break
+    fi
+  fi
+
+  sleep 5
+done
+
+if [ -z "$WORKLOAD_SSH_PRIVATE_KEY" ] || [ "$WORKLOAD_SSH_PRIVATE_KEY" = "None" ]; then
+  echo \
+    "ERROR: unable to retrieve OpenStack workload SSH private key from SSM parameter $WORKLOAD_SSH_PRIVATE_KEY_PARAMETER" \
+    >&2
+
+  cat /tmp/workload-ssh-key-error.log >&2 || true
+  exit 1
+fi
+
+printf '%s\n' "$WORKLOAD_SSH_PRIVATE_KEY" > "$WORKLOAD_SSH_PRIVATE_KEY_PATH"
+chmod 0600 "$WORKLOAD_SSH_PRIVATE_KEY_PATH"
+chown ubuntu:ubuntu "$WORKLOAD_SSH_PRIVATE_KEY_PATH"
+
+unset WORKLOAD_SSH_PRIVATE_KEY
+rm -f /tmp/workload-ssh-key-error.log
+
+set -x
 
 # ---------------------------------------------------------------------------
 # HCP Terraform Agent
@@ -282,6 +334,7 @@ cat > /etc/motd <<'EOF_MOTD'
  Ansible     : /opt/ansible-venv
  OpenStack   : /opt/openstack-client-venv
  HCP Agent   : tfc-agent.service
+ Workload SSH: /home/ubuntu/.ssh/private-banking-openstack-workloads
  Bootstrap   : /var/log/private-banking-lab-ops-runner-bootstrap.log
 ============================================================
 EOF_MOTD
@@ -294,6 +347,7 @@ terraform version
 ansible --version
 openstack --version
 aws --version
+sudo -u ubuntu test -r "$WORKLOAD_SSH_PRIVATE_KEY_PATH"
 
 systemctl --no-pager --full status tfc-agent.service
 

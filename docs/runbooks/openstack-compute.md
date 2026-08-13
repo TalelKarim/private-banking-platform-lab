@@ -21,29 +21,35 @@ Terraform owns the infrastructure only. Jenkins itself will be installed and
 configured in the next layer by Ansible, so application configuration can be
 changed without recreating the VM.
 
-## One-time HCP Terraform input
+## One-time workload SSH identity
 
-The OpenStack provider must inject an SSH public key into the VM, but Terraform
-must not generate the private key inside the HCP OpenStack state. The existing
-AWS lab key is reused instead.
+Use one dedicated SSH identity for Terraform-managed OpenStack workload VMs.
+Do not reuse the AWS lab-host key and do not generate the private key inside
+Terraform state.
 
-From the repository on the Mac, derive the public key from the existing lab
-private key without exposing the private key itself:
+On the Mac:
 
 ```bash
-ssh-keygen -y \
-  -f infrastructure/terraform/aws/.keys/private-banking-platform-lab.pem
+ssh-keygen \
+  -t ed25519 \
+  -f "$HOME/.ssh/private-banking-openstack-workloads" \
+  -C "private-banking-openstack-workloads"
+
+chmod 600 "$HOME/.ssh/private-banking-openstack-workloads"
 ```
 
-In the HCP Terraform workspace `private-banking-platform-lab-openstack`, create
-a Terraform variable named:
+Put the public half in the HCP Terraform workspace
+`private-banking-platform-lab-openstack` as the Terraform variable
+`workload_ssh_public_key`:
 
-```text
-workload_ssh_public_key
+```bash
+cat "$HOME/.ssh/private-banking-openstack-workloads.pub"
 ```
 
-Paste the command output as its value. The value is a public key, not a secret;
-marking it sensitive in HCP is optional.
+The private half is stored once as an SSM `SecureString` for the AWS
+ops-runner. Terraform manages only the parameter name and read permission; the
+secret value never enters Terraform state. See
+`docs/runbooks/openstack-workload-access.md` for the exact bootstrap command.
 
 ## Expected plan
 
@@ -99,18 +105,17 @@ The VM must be `ACTIVE`, its fixed address must be `10.10.0.20`, the Cinder
 volume must be attached, and the floating IP must be associated with the Jenkins
 port.
 
-Check outbound connectivity from the VM through the lab host with SSH ProxyJump.
-The same RSA key is accepted by both the AWS lab host and the OpenStack VM:
+After the routed management path is applied, validate from the ops-runner
+without ProxyJump:
 
 ```bash
-LAB_HOST_PUBLIC_IP=$(terraform -chdir=infrastructure/terraform/aws output -raw public_ip)
 JENKINS_FIP=<floating-ip-shown-by-HCP-output>
-KEY=infrastructure/terraform/aws/.keys/private-banking-platform-lab.pem
-
-ssh -i "$KEY" \
-  -o "ProxyJump=ubuntu@${LAB_HOST_PUBLIC_IP}" \
+ssh -i /home/ubuntu/.ssh/private-banking-openstack-workloads \
   ubuntu@"${JENKINS_FIP}"
 ```
+
+The route and forwarding chain is documented in
+`docs/runbooks/openstack-workload-access.md`.
 
 Inside the VM:
 
