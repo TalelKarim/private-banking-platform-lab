@@ -184,150 +184,201 @@
   when: jenkins_security_bootstrap_required
   no_log: true
 
-- name: Start or restart Jenkins with the desired configuration
-  ansible.builtin.systemd_service:
-    name: jenkins
-    enabled: true
-    state: "{{ 'restarted' if (jenkins_security_bootstrap_required or jenkins_systemd_override.changed) else 'started' }}"
+- name: Configure and validate the Jenkins controller
+  block:
+    - name: Start or restart Jenkins with the desired configuration
+      ansible.builtin.systemd_service:
+        name: jenkins
+        enabled: true
+        state: "{{ 'restarted' if (jenkins_security_bootstrap_required or jenkins_systemd_override.changed) else 'started' }}"
 
-- name: Wait for the Jenkins HTTP endpoint
-  ansible.builtin.wait_for:
-    host: 127.0.0.1
-    port: "{{ jenkins_http_port }}"
-    delay: 2
-    timeout: 180
+    - name: Wait for the Jenkins HTTP endpoint
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ jenkins_http_port }}"
+        delay: 2
+        timeout: 180
 
-- name: Verify authenticated Jenkins access
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ jenkins_http_port }}/whoAmI/api/json"
-    user: "{{ jenkins_admin_username }}"
-    password: "{{ jenkins_admin_password }}"
-    force_basic_auth: true
-    status_code: 200
-    return_content: true
-  register: jenkins_whoami
-  changed_when: false
-  no_log: true
+    - name: Verify authenticated Jenkins access
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ jenkins_http_port }}/whoAmI/api/json"
+        user: "{{ jenkins_admin_username }}"
+        password: "{{ jenkins_admin_password }}"
+        force_basic_auth: true
+        status_code: 200
+        return_content: true
+      register: jenkins_whoami
+      changed_when: false
+      no_log: true
 
-- name: Assert Jenkins sees the expected administrator identity
-  ansible.builtin.assert:
-    that:
-      - jenkins_whoami.json.authenticated | bool
-      - jenkins_whoami.json.name == jenkins_admin_username
-    fail_msg: "Jenkins authentication did not resolve to the expected administrator account."
-  no_log: true
+    - name: Assert Jenkins sees the expected administrator identity
+      ansible.builtin.assert:
+        that:
+          - jenkins_whoami.json.authenticated | bool
+          - jenkins_whoami.json.name == jenkins_admin_username
+        fail_msg: "Jenkins authentication did not resolve to the expected administrator account."
+      no_log: true
 
-- name: Read the currently installed Jenkins plugins
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ jenkins_http_port }}/pluginManager/api/json?depth=1"
-    user: "{{ jenkins_admin_username }}"
-    password: "{{ jenkins_admin_password }}"
-    force_basic_auth: true
-    status_code: 200
-    return_content: true
-  register: jenkins_plugin_state
-  changed_when: false
-  no_log: true
+    - name: Read the currently installed Jenkins plugins
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ jenkins_http_port }}/pluginManager/api/json?depth=1"
+        user: "{{ jenkins_admin_username }}"
+        password: "{{ jenkins_admin_password }}"
+        force_basic_auth: true
+        status_code: 200
+        return_content: true
+      register: jenkins_plugin_state
+      changed_when: false
+      no_log: true
 
-- name: Determine the missing baseline Jenkins plugins
-  ansible.builtin.set_fact:
-    jenkins_missing_plugins: >-
-      {{
-        jenkins_plugins
-        | difference(jenkins_plugin_state.json.plugins | map(attribute='shortName') | list)
-      }}
+    - name: Determine the missing baseline Jenkins plugins
+      ansible.builtin.set_fact:
+        jenkins_missing_plugins: >-
+          {{
+            jenkins_plugins
+            | difference(
+                jenkins_plugin_state.json.plugins
+                | map(attribute='shortName')
+                | list
+              )
+          }}
 
-- name: Create the Jenkins CLI cache directory
-  ansible.builtin.file:
-    path: "{{ jenkins_cli_jar | dirname }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  when: jenkins_missing_plugins | length > 0
+    - name: Create the Jenkins CLI cache directory
+      ansible.builtin.file:
+        path: "{{ jenkins_cli_jar | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: jenkins_missing_plugins | length > 0
 
-- name: Download the Jenkins CLI from the local controller
-  ansible.builtin.get_url:
-    url: "http://127.0.0.1:{{ jenkins_http_port }}/jnlpJars/jenkins-cli.jar"
-    dest: "{{ jenkins_cli_jar }}"
-    owner: root
-    group: root
-    mode: "0644"
-    url_username: "{{ jenkins_admin_username }}"
-    url_password: "{{ jenkins_admin_password }}"
-    force_basic_auth: true
-  when: jenkins_missing_plugins | length > 0
-  no_log: true
+    - name: Download the Jenkins CLI from the local controller
+      ansible.builtin.get_url:
+        url: "http://127.0.0.1:{{ jenkins_http_port }}/jnlpJars/jenkins-cli.jar"
+        dest: "{{ jenkins_cli_jar }}"
+        owner: root
+        group: root
+        mode: "0644"
+        url_username: "{{ jenkins_admin_username }}"
+        url_password: "{{ jenkins_admin_password }}"
+        force_basic_auth: true
+      when: jenkins_missing_plugins | length > 0
+      no_log: true
 
-- name: Install missing baseline Jenkins plugins
-  ansible.builtin.command:
-    argv: >-
-      {{
-        ['/usr/bin/java', '-jar', jenkins_cli_jar,
-         '-s', 'http://127.0.0.1:' ~ (jenkins_http_port | string) ~ '/',
-         '-auth', jenkins_admin_username ~ ':' ~ jenkins_admin_password,
-         'install-plugin']
-        + jenkins_missing_plugins
-        + ['-deploy']
-      }}
-  when: jenkins_missing_plugins | length > 0
-  register: jenkins_plugin_install
-  changed_when: true
-  no_log: true
+    - name: Install missing baseline Jenkins plugins
+      when: jenkins_missing_plugins | length > 0
+      block:
+        - name: Ensure the runtime Jenkins secret directory exists for CLI authentication
+          ansible.builtin.file:
+            path: "{{ jenkins_bootstrap_secret_dir }}"
+            state: directory
+            owner: root
+            group: jenkins
+            mode: "0750"
 
-- name: Restart Jenkins after plugin installation
-  ansible.builtin.systemd_service:
-    name: jenkins
-    state: restarted
-  when: jenkins_missing_plugins | length > 0
+        - name: Write runtime-only Jenkins CLI credentials
+          ansible.builtin.copy:
+            content: "{{ jenkins_admin_username }}:{{ jenkins_admin_password }}"
+            dest: "{{ jenkins_bootstrap_secret_dir }}/cli-auth"
+            owner: root
+            group: root
+            mode: "0600"
+          no_log: true
 
-- name: Wait for Jenkins after plugin installation
-  ansible.builtin.wait_for:
-    host: 127.0.0.1
-    port: "{{ jenkins_http_port }}"
-    delay: 2
-    timeout: 180
-  when: jenkins_missing_plugins | length > 0
+        - name: Install missing baseline Jenkins plugins through the HTTP CLI transport
+          ansible.builtin.command:
+            argv: >-
+              {{
+                ['/usr/bin/java', '-jar', jenkins_cli_jar,
+                 '-s', 'http://127.0.0.1:' ~ (jenkins_http_port | string) ~ '/',
+                 '-http',
+                 '-auth', '@' ~ jenkins_bootstrap_secret_dir ~ '/cli-auth',
+                 'install-plugin']
+                + jenkins_missing_plugins
+              }}
+          register: jenkins_plugin_install
+          changed_when: true
+          no_log: true
 
-- name: Revalidate Jenkins authentication after plugin installation
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ jenkins_http_port }}/whoAmI/api/json"
-    user: "{{ jenkins_admin_username }}"
-    password: "{{ jenkins_admin_password }}"
-    force_basic_auth: true
-    status_code: 200
-  changed_when: false
-  no_log: true
+      always:
+        - name: Remove runtime Jenkins CLI credentials
+          ansible.builtin.file:
+            path: "{{ jenkins_bootstrap_secret_dir }}/cli-auth"
+            state: absent
+          no_log: true
 
-- name: Remove the one-shot Jenkins security bootstrap script
-  ansible.builtin.file:
-    path: "{{ jenkins_home }}/init.groovy.d/10-bootstrap-security.groovy"
-    state: absent
-  when: jenkins_security_bootstrap_required
+        - name: Remove the empty runtime secret directory when security bootstrap is not active
+          ansible.builtin.file:
+            path: "{{ jenkins_bootstrap_secret_dir }}"
+            state: absent
+          when: not jenkins_security_bootstrap_required
+          no_log: true
 
-- name: Remove the runtime Jenkins administrator password
-  ansible.builtin.file:
-    path: "{{ jenkins_bootstrap_secret_dir }}"
-    state: absent
-  when: jenkins_security_bootstrap_required
-  no_log: true
+    - name: Restart Jenkins after plugin installation
+      ansible.builtin.systemd_service:
+        name: jenkins
+        state: restarted
+      when: jenkins_missing_plugins | length > 0
 
-- name: Persist only the administrator password fingerprint
-  ansible.builtin.copy:
-    content: "{{ jenkins_admin_password_sha256 }}\n"
-    dest: "{{ jenkins_admin_password_hash_file }}"
-    owner: jenkins
-    group: jenkins
-    mode: "0600"
-  when: jenkins_security_bootstrap_required
-  no_log: true
+    - name: Wait for Jenkins after plugin installation
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ jenkins_http_port }}"
+        delay: 2
+        timeout: 180
+      when: jenkins_missing_plugins | length > 0
 
-- name: Verify Jenkins service is active
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/systemctl
-      - is-active
-      - jenkins.service
-  register: jenkins_service_state
-  changed_when: false
-  failed_when: jenkins_service_state.stdout != "active"
+    - name: Revalidate Jenkins authentication after plugin installation
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ jenkins_http_port }}/whoAmI/api/json"
+        user: "{{ jenkins_admin_username }}"
+        password: "{{ jenkins_admin_password }}"
+        force_basic_auth: true
+        status_code: 200
+        return_content: true
+      register: jenkins_whoami_after_plugins
+      changed_when: false
+      no_log: true
+
+    - name: Assert Jenkins authentication still works after plugin installation
+      ansible.builtin.assert:
+        that:
+          - jenkins_whoami_after_plugins.json.authenticated | bool
+          - jenkins_whoami_after_plugins.json.name == jenkins_admin_username
+        fail_msg: "Jenkins authentication failed after baseline plugin installation."
+      no_log: true
+
+    - name: Verify Jenkins service is active
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - is-active
+          - jenkins.service
+      register: jenkins_service_state
+      changed_when: false
+      failed_when: jenkins_service_state.stdout != "active"
+
+    - name: Persist only the administrator password fingerprint
+      ansible.builtin.copy:
+        content: "{{ jenkins_admin_password_sha256 }}\n"
+        dest: "{{ jenkins_admin_password_hash_file }}"
+        owner: jenkins
+        group: jenkins
+        mode: "0600"
+      when: jenkins_security_bootstrap_required
+      no_log: true
+
+  always:
+    - name: Remove the one-shot Jenkins security bootstrap script
+      ansible.builtin.file:
+        path: "{{ jenkins_home }}/init.groovy.d/10-bootstrap-security.groovy"
+        state: absent
+      when: jenkins_security_bootstrap_required
+      no_log: true
+
+    - name: Remove runtime Jenkins bootstrap secrets
+      ansible.builtin.file:
+        path: "{{ jenkins_bootstrap_secret_dir }}"
+        state: absent
+      when: jenkins_security_bootstrap_required
+      no_log: true
