@@ -7,6 +7,14 @@ exec > >(
 ) 2>&1
 
 echo "=== Starting Golden AMI first-boot reconciliation ==="
+# Give the machine an immediately recognisable operational hostname.
+hostnamectl set-hostname lab-host
+if grep -qE '^127\.0\.1\.1[[:space:]]+' /etc/hosts; then
+  sed -i -E 's/^127\.0\.1\.1[[:space:]].*/127.0.1.1 lab-host/' /etc/hosts
+else
+  printf '127.0.1.1 lab-host\n' >> /etc/hosts
+fi
+
 
 # /etc/fstab was baked with the filesystem UUID of the /data snapshot. The
 # cloned EBS volume keeps that filesystem UUID, so mount it before discovery.

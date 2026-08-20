@@ -70,6 +70,25 @@ resource "aws_iam_role_policy" "ops_runner_workload_ssh_key" {
   })
 }
 
+resource "aws_iam_role_policy" "ops_runner_jenkins_admin_password" {
+  name = "${var.project_name}-ops-runner-jenkins-admin-password"
+  role = aws_iam_role.ops_runner.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${var.jenkins_admin_password_ssm_parameter_name}"
+      }
+    ]
+  })
+}
+
 resource "aws_security_group" "ops_runner" {
   name_prefix = "${var.project_name}-ops-runner-"
   description = "Security group for the Terraform and Ansible administration runner"
@@ -172,6 +191,7 @@ resource "aws_instance" "ops_runner" {
     aws_iam_role_policy_attachment.ops_runner_ssm_core,
     aws_iam_role_policy.ops_runner_hcp_agent_token,
     aws_iam_role_policy.ops_runner_workload_ssh_key,
+    aws_iam_role_policy.ops_runner_jenkins_admin_password,
     local_sensitive_file.ssh_private_key
   ]
 }

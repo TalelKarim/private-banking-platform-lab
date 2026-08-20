@@ -172,3 +172,13 @@ variable "workload_ssh_private_key_ssm_parameter_name" {
     error_message = "workload_ssh_private_key_ssm_parameter_name must be an absolute SSM parameter path."
   }
 }
+variable "jenkins_admin_password_ssm_parameter_name" {
+  description = "Existing SSM SecureString containing the Jenkins bootstrap administrator password"
+  type        = string
+  default     = "/private-banking-platform-lab/jenkins/admin-password"
+
+  validation {
+    condition     = startswith(var.jenkins_admin_password_ssm_parameter_name, "/") && length(var.jenkins_admin_password_ssm_parameter_name) > 1
+    error_message = "jenkins_admin_password_ssm_parameter_name must be an absolute SSM parameter path."
+  }
+}
