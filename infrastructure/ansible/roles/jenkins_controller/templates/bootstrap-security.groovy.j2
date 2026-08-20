@@ -1,0 +1,41 @@
+import jenkins.model.Jenkins
+import hudson.model.User
+import hudson.security.HudsonPrivateSecurityRealm
+import hudson.security.FullControlOnceLoggedInAuthorizationStrategy
+
+Jenkins instance = Jenkins.get()
+String adminUser = {{ jenkins_admin_username | to_json }}
+File passwordFile = new File({{ (jenkins_bootstrap_secret_dir ~ '/admin-password') | to_json }})
+
+if (!passwordFile.exists()) {
+    throw new IllegalStateException("Missing Jenkins bootstrap password file")
+}
+
+String adminPassword = passwordFile.text.trim()
+if (adminPassword.isEmpty()) {
+    throw new IllegalStateException("Empty Jenkins bootstrap password")
+}
+
+HudsonPrivateSecurityRealm realm
+if (instance.getSecurityRealm() instanceof HudsonPrivateSecurityRealm) {
+    realm = (HudsonPrivateSecurityRealm) instance.getSecurityRealm()
+} else {
+    realm = new HudsonPrivateSecurityRealm(false)
+    instance.setSecurityRealm(realm)
+}
+
+User admin = User.getById(adminUser, false)
+if (admin == null) {
+    realm.createAccount(adminUser, adminPassword)
+} else {
+    admin.addProperty(HudsonPrivateSecurityRealm.Details.fromPlainPassword(adminPassword))
+    admin.save()
+}
+
+FullControlOnceLoggedInAuthorizationStrategy authorization = new FullControlOnceLoggedInAuthorizationStrategy()
+authorization.setAllowAnonymousRead(false)
+instance.setAuthorizationStrategy(authorization)
+
+// This controller does not need the legacy inbound TCP agent listener.
+instance.setSlaveAgentPort(-1)
+instance.save()

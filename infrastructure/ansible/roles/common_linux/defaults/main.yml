@@ -1,4 +1,6 @@
 ---
+common_linux_hostname: null
+
 common_linux_packages:
   - apt-transport-https
   - bash-completion

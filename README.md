@@ -72,3 +72,7 @@ private-banking-platform-lab/
 ## Current next step
 
 Complete the routed administration path from the AWS ops-runner to OpenStack workload floating IPs, then validate direct SSH to `jenkins-controller`. The next layer installs and configures Jenkins through Ansible without changing the VM or network foundation. See `docs/runbooks/openstack-workload-access.md`.
+
+## Workload runbooks
+
+- Jenkins controller provisioning: `docs/runbooks/jenkins-controller.md`

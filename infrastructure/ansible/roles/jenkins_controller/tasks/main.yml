@@ -1,0 +1,333 @@
+---
+- name: Validate Jenkins role inputs
+  ansible.builtin.assert:
+    that:
+      - jenkins_admin_username is string
+      - jenkins_admin_username | length > 0
+      - jenkins_admin_password is string
+      - jenkins_admin_password | length >= 16
+      - jenkins_http_port | int > 0
+      - jenkins_http_port | int < 65536
+    fail_msg: "Jenkins requires a non-empty admin username and an SSM-backed password of at least 16 characters."
+  no_log: true
+
+- name: Verify Jenkins home is backed by the persistent Cinder mount
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/mountpoint
+      - -q
+      - "{{ jenkins_home }}"
+  changed_when: false
+
+- name: Create the APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Install the current Jenkins LTS repository signing key
+  ansible.builtin.get_url:
+    url: "{{ jenkins_repository_key_url }}"
+    dest: "{{ jenkins_repository_key_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure the Jenkins LTS APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by={{ jenkins_repository_key_path }}] {{ jenkins_repository_url }} binary/"
+    filename: jenkins
+    state: present
+    update_cache: true
+
+- name: Install Java 21 and Jenkins runtime dependencies
+  ansible.builtin.apt:
+    name:
+      - fontconfig
+      - "{{ jenkins_java_package }}"
+    state: present
+
+- name: Check whether the Jenkins package is already installed
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dpkg-query
+      - -W
+      - -f=${Status}
+      - jenkins
+  register: jenkins_package_state
+  changed_when: false
+  failed_when: false
+
+- name: Mask Jenkins during the first package installation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - mask
+      - jenkins.service
+  when: jenkins_package_state.rc != 0
+  changed_when: true
+
+- name: Install Jenkins LTS
+  ansible.builtin.apt:
+    name: jenkins
+    state: present
+  register: jenkins_package_install
+
+- name: Unmask Jenkins after package installation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - unmask
+      - jenkins.service
+  when: jenkins_package_state.rc != 0
+  changed_when: true
+
+- name: Ensure Jenkins owns the persistent home directory
+  ansible.builtin.file:
+    path: "{{ jenkins_home }}"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: "0750"
+
+- name: Create the Jenkins systemd override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/jenkins.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure Jenkins service defaults
+  ansible.builtin.template:
+    src: jenkins-systemd-override.conf.j2
+    dest: /etc/systemd/system/jenkins.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: jenkins_systemd_override
+
+- name: Reload systemd after Jenkins unit changes
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Compute the desired administrator password fingerprint
+  ansible.builtin.set_fact:
+    jenkins_admin_password_sha256: "{{ jenkins_admin_password | hash('sha256') }}"
+  no_log: true
+
+- name: Check for the previously applied administrator password fingerprint
+  ansible.builtin.stat:
+    path: "{{ jenkins_admin_password_hash_file }}"
+  register: jenkins_admin_password_hash_file_state
+  changed_when: false
+  no_log: true
+
+- name: Read the previously applied administrator password fingerprint
+  ansible.builtin.slurp:
+    src: "{{ jenkins_admin_password_hash_file }}"
+  register: jenkins_admin_password_hash_state
+  when: jenkins_admin_password_hash_file_state.stat.exists
+  changed_when: false
+  no_log: true
+
+- name: Decide whether Jenkins security bootstrap must run
+  ansible.builtin.set_fact:
+    jenkins_security_bootstrap_required: >-
+      {{
+        (not jenkins_admin_password_hash_file_state.stat.exists)
+        or (jenkins_admin_password_hash_state.content | default('') | b64decode | trim)
+           != jenkins_admin_password_sha256
+      }}
+  no_log: true
+
+- name: Stop Jenkins before applying bootstrap security
+  ansible.builtin.systemd_service:
+    name: jenkins
+    state: stopped
+  when: jenkins_security_bootstrap_required
+
+- name: Create the runtime-only Jenkins bootstrap secret directory
+  ansible.builtin.file:
+    path: "{{ jenkins_bootstrap_secret_dir }}"
+    state: directory
+    owner: root
+    group: jenkins
+    mode: "0750"
+  when: jenkins_security_bootstrap_required
+
+- name: Write the runtime-only Jenkins administrator password
+  ansible.builtin.copy:
+    content: "{{ jenkins_admin_password }}\n"
+    dest: "{{ jenkins_bootstrap_secret_dir }}/admin-password"
+    owner: root
+    group: jenkins
+    mode: "0640"
+  when: jenkins_security_bootstrap_required
+  no_log: true
+
+- name: Create the Jenkins init script directory
+  ansible.builtin.file:
+    path: "{{ jenkins_home }}/init.groovy.d"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: "0750"
+
+- name: Install the one-shot Jenkins security bootstrap script
+  ansible.builtin.template:
+    src: bootstrap-security.groovy.j2
+    dest: "{{ jenkins_home }}/init.groovy.d/10-bootstrap-security.groovy"
+    owner: jenkins
+    group: jenkins
+    mode: "0600"
+  when: jenkins_security_bootstrap_required
+  no_log: true
+
+- name: Start or restart Jenkins with the desired configuration
+  ansible.builtin.systemd_service:
+    name: jenkins
+    enabled: true
+    state: "{{ 'restarted' if (jenkins_security_bootstrap_required or jenkins_systemd_override.changed) else 'started' }}"
+
+- name: Wait for the Jenkins HTTP endpoint
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ jenkins_http_port }}"
+    delay: 2
+    timeout: 180
+
+- name: Verify authenticated Jenkins access
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ jenkins_http_port }}/whoAmI/api/json"
+    user: "{{ jenkins_admin_username }}"
+    password: "{{ jenkins_admin_password }}"
+    force_basic_auth: true
+    status_code: 200
+    return_content: true
+  register: jenkins_whoami
+  changed_when: false
+  no_log: true
+
+- name: Assert Jenkins sees the expected administrator identity
+  ansible.builtin.assert:
+    that:
+      - jenkins_whoami.json.authenticated | bool
+      - jenkins_whoami.json.name == jenkins_admin_username
+    fail_msg: "Jenkins authentication did not resolve to the expected administrator account."
+  no_log: true
+
+- name: Read the currently installed Jenkins plugins
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ jenkins_http_port }}/pluginManager/api/json?depth=1"
+    user: "{{ jenkins_admin_username }}"
+    password: "{{ jenkins_admin_password }}"
+    force_basic_auth: true
+    status_code: 200
+    return_content: true
+  register: jenkins_plugin_state
+  changed_when: false
+  no_log: true
+
+- name: Determine the missing baseline Jenkins plugins
+  ansible.builtin.set_fact:
+    jenkins_missing_plugins: >-
+      {{
+        jenkins_plugins
+        | difference(jenkins_plugin_state.json.plugins | map(attribute='shortName') | list)
+      }}
+
+- name: Create the Jenkins CLI cache directory
+  ansible.builtin.file:
+    path: "{{ jenkins_cli_jar | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: jenkins_missing_plugins | length > 0
+
+- name: Download the Jenkins CLI from the local controller
+  ansible.builtin.get_url:
+    url: "http://127.0.0.1:{{ jenkins_http_port }}/jnlpJars/jenkins-cli.jar"
+    dest: "{{ jenkins_cli_jar }}"
+    owner: root
+    group: root
+    mode: "0644"
+    url_username: "{{ jenkins_admin_username }}"
+    url_password: "{{ jenkins_admin_password }}"
+    force_basic_auth: true
+  when: jenkins_missing_plugins | length > 0
+  no_log: true
+
+- name: Install missing baseline Jenkins plugins
+  ansible.builtin.command:
+    argv: >-
+      {{
+        ['/usr/bin/java', '-jar', jenkins_cli_jar,
+         '-s', 'http://127.0.0.1:' ~ (jenkins_http_port | string) ~ '/',
+         '-auth', jenkins_admin_username ~ ':' ~ jenkins_admin_password,
+         'install-plugin']
+        + jenkins_missing_plugins
+        + ['-deploy']
+      }}
+  when: jenkins_missing_plugins | length > 0
+  register: jenkins_plugin_install
+  changed_when: true
+  no_log: true
+
+- name: Restart Jenkins after plugin installation
+  ansible.builtin.systemd_service:
+    name: jenkins
+    state: restarted
+  when: jenkins_missing_plugins | length > 0
+
+- name: Wait for Jenkins after plugin installation
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ jenkins_http_port }}"
+    delay: 2
+    timeout: 180
+  when: jenkins_missing_plugins | length > 0
+
+- name: Revalidate Jenkins authentication after plugin installation
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ jenkins_http_port }}/whoAmI/api/json"
+    user: "{{ jenkins_admin_username }}"
+    password: "{{ jenkins_admin_password }}"
+    force_basic_auth: true
+    status_code: 200
+  changed_when: false
+  no_log: true
+
+- name: Remove the one-shot Jenkins security bootstrap script
+  ansible.builtin.file:
+    path: "{{ jenkins_home }}/init.groovy.d/10-bootstrap-security.groovy"
+    state: absent
+  when: jenkins_security_bootstrap_required
+
+- name: Remove the runtime Jenkins administrator password
+  ansible.builtin.file:
+    path: "{{ jenkins_bootstrap_secret_dir }}"
+    state: absent
+  when: jenkins_security_bootstrap_required
+  no_log: true
+
+- name: Persist only the administrator password fingerprint
+  ansible.builtin.copy:
+    content: "{{ jenkins_admin_password_sha256 }}\n"
+    dest: "{{ jenkins_admin_password_hash_file }}"
+    owner: jenkins
+    group: jenkins
+    mode: "0600"
+  when: jenkins_security_bootstrap_required
+  no_log: true
+
+- name: Verify Jenkins service is active
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - is-active
+      - jenkins.service
+  register: jenkins_service_state
+  changed_when: false
+  failed_when: jenkins_service_state.stdout != "active"

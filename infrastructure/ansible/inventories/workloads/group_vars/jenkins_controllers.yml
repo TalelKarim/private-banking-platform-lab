@@ -1,0 +1,22 @@
+---
+common_linux_hostname: jenkins-controller
+
+persistent_volume_label: jenkins-data
+persistent_volume_mount_point: /var/lib/jenkins
+persistent_volume_filesystem: ext4
+persistent_volume_mount_options: defaults,nofail,x-systemd.device-timeout=30
+
+jenkins_home: /var/lib/jenkins
+jenkins_http_port: 8080
+jenkins_admin_username: admin
+jenkins_admin_password_ssm_parameter_name: /private-banking-platform-lab/jenkins/admin-password
+jenkins_admin_password_aws_region: eu-south-2
+
+# Keep the controller baseline small. Build/runtime-specific plugins are added
+# later with the CI/CD layer rather than preloading the controller with extras.
+jenkins_plugins:
+  - workflow-aggregator
+  - git
+  - credentials-binding
+  - ssh-agent
+  - configuration-as-code

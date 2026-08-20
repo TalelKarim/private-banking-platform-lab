@@ -6,6 +6,20 @@
       - ansible_distribution_version is version("24.04", "==")
     fail_msg: "This lab is pinned to Ubuntu 24.04 LTS."
 
+- name: Configure the system hostname
+  ansible.builtin.hostname:
+    name: "{{ common_linux_hostname }}"
+  when: common_linux_hostname is not none
+
+- name: Keep the local hostname resolvable
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s+'
+    line: "127.0.1.1 {{ common_linux_hostname }}"
+    insertafter: '^127\.0\.0\.1\s+'
+    state: present
+  when: common_linux_hostname is not none
+
 - name: Refresh the APT package index
   ansible.builtin.apt:
     update_cache: true

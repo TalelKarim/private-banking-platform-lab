@@ -1,0 +1,4 @@
+[Service]
+Environment="JENKINS_HOME={{ jenkins_home }}"
+Environment="JENKINS_PORT={{ jenkins_http_port }}"
+Environment="JAVA_OPTS=-Djava.awt.headless=true -Djenkins.install.runSetupWizard=false"

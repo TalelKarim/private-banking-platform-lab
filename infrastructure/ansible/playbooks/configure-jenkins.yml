@@ -1,0 +1,63 @@
+---
+- name: Configure the Jenkins controller
+  hosts: jenkins_controllers
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    - name: Read the Jenkins administrator password from SSM on the ops-runner
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/aws
+          - ssm
+          - get-parameter
+          - --region
+          - "{{ jenkins_admin_password_aws_region }}"
+          - --name
+          - "{{ jenkins_admin_password_ssm_parameter_name }}"
+          - --with-decryption
+          - --query
+          - Parameter.Value
+          - --output
+          - text
+      delegate_to: localhost
+      become: false
+      register: jenkins_admin_password_lookup
+      changed_when: false
+      no_log: true
+
+    - name: Hold the Jenkins administrator password only in Ansible memory
+      ansible.builtin.set_fact:
+        jenkins_admin_password: "{{ jenkins_admin_password_lookup.stdout }}"
+      no_log: true
+
+  roles:
+    - role: common_linux
+    - role: persistent_volume
+    - role: jenkins_controller
+
+  post_tasks:
+    - name: Verify the Cinder-backed Jenkins home mount
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/findmnt
+          - --target
+          - "{{ jenkins_home }}"
+      register: jenkins_mount_validation
+      changed_when: false
+
+    - name: Verify Java runtime
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/java
+          - -version
+      register: jenkins_java_validation
+      changed_when: false
+
+    - name: Report the Jenkins controller validation summary
+      ansible.builtin.debug:
+        msg:
+          - "hostname={{ ansible_hostname }}"
+          - "jenkins_home={{ jenkins_home }} (Cinder mounted)"
+          - "jenkins_service=active"
+          - "jenkins_http=http://127.0.0.1:{{ jenkins_http_port }}"

@@ -1,0 +1,182 @@
+---
+- name: Validate persistent volume inputs
+  ansible.builtin.assert:
+    that:
+      - persistent_volume_label is string
+      - persistent_volume_label | length > 0
+      - persistent_volume_mount_point is string
+      - persistent_volume_mount_point | length > 1
+      - persistent_volume_filesystem == "ext4"
+    fail_msg: "persistent_volume requires a non-empty label, mount point and the supported ext4 filesystem."
+
+- name: Look for an already labelled persistent volume
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/blkid
+      - -L
+      - "{{ persistent_volume_label }}"
+  register: persistent_volume_label_lookup
+  changed_when: false
+  failed_when: persistent_volume_label_lookup.rc not in [0, 2]
+
+- name: Discover the single non-root block disk when the volume has no label yet
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    root_source=$(findmnt -n -o SOURCE /)
+    root_device=$(readlink -f "$root_source")
+    root_parent=$(lsblk -ndo PKNAME "$root_device" | head -n1 || true)
+
+    if [[ -n "$root_parent" ]]; then
+      root_disk="/dev/$root_parent"
+    else
+      root_disk="$root_device"
+    fi
+
+    while read -r device type; do
+      if [[ "$type" == "disk" && "$device" != "$root_disk" ]]; then
+        printf '%s\n' "$device"
+      fi
+    done < <(lsblk -dnpo NAME,TYPE)
+  args:
+    executable: /bin/bash
+  register: persistent_volume_candidates
+  changed_when: false
+  when: persistent_volume_label_lookup.rc != 0
+
+- name: Require exactly one unlabelled data disk on first configuration
+  ansible.builtin.assert:
+    that:
+      - persistent_volume_candidates.stdout_lines | length == 1
+    fail_msg: >-
+      Could not safely identify exactly one non-root data disk. Candidates:
+      {{ persistent_volume_candidates.stdout_lines | default([]) }}.
+      No filesystem was created.
+  when: persistent_volume_label_lookup.rc != 0
+
+- name: Select the persistent volume device
+  ansible.builtin.set_fact:
+    persistent_volume_device: >-
+      {{
+        persistent_volume_label_lookup.stdout
+        if persistent_volume_label_lookup.rc == 0
+        else persistent_volume_candidates.stdout_lines[0]
+      }}
+
+- name: Check whether the target mount point is already mounted
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/mountpoint
+      - -q
+      - "{{ persistent_volume_mount_point }}"
+  register: persistent_volume_mountpoint_state
+  changed_when: false
+  failed_when: persistent_volume_mountpoint_state.rc not in [0, 1]
+
+- name: Check for pre-existing files that would be hidden by the mount
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if [[ -d {{ persistent_volume_mount_point | quote }} ]]; then
+      find {{ persistent_volume_mount_point | quote }} -mindepth 1 -maxdepth 1 -print -quit
+    fi
+  args:
+    executable: /bin/bash
+  register: persistent_volume_existing_content
+  changed_when: false
+  when: persistent_volume_mountpoint_state.rc != 0
+
+- name: Refuse to hide existing application data under a new mount
+  ansible.builtin.assert:
+    that:
+      - persistent_volume_existing_content.stdout | length == 0
+    fail_msg: >-
+      {{ persistent_volume_mount_point }} already contains files while it is not a mount point.
+      Move or migrate that data deliberately before mounting the Cinder volume.
+  when: persistent_volume_mountpoint_state.rc != 0
+
+- name: Read the existing filesystem type
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/blkid
+      - -s
+      - TYPE
+      - -o
+      - value
+      - "{{ persistent_volume_device }}"
+  register: persistent_volume_filesystem_type
+  changed_when: false
+  failed_when: persistent_volume_filesystem_type.rc not in [0, 2]
+
+- name: Refuse to overwrite an unexpected filesystem
+  ansible.builtin.assert:
+    that:
+      - persistent_volume_filesystem_type.rc != 0 or persistent_volume_filesystem_type.stdout == persistent_volume_filesystem
+    fail_msg: >-
+      {{ persistent_volume_device }} already contains filesystem
+      {{ persistent_volume_filesystem_type.stdout }}; expected {{ persistent_volume_filesystem }}.
+      No formatting was performed.
+
+- name: Create the filesystem only on a truly blank Cinder volume
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/mkfs.ext4
+      - -F
+      - -L
+      - "{{ persistent_volume_label }}"
+      - "{{ persistent_volume_device }}"
+  when: persistent_volume_filesystem_type.rc != 0
+
+- name: Ensure the existing ext4 filesystem has the expected label
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/e2label
+      - "{{ persistent_volume_device }}"
+      - "{{ persistent_volume_label }}"
+  when: persistent_volume_filesystem_type.rc == 0
+  changed_when: false
+
+- name: Read the persistent filesystem UUID
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/blkid
+      - -s
+      - UUID
+      - -o
+      - value
+      - "{{ persistent_volume_device }}"
+  register: persistent_volume_uuid
+  changed_when: false
+
+- name: Create the persistent mount point
+  ansible.builtin.file:
+    path: "{{ persistent_volume_mount_point }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Persist the Cinder mount in fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^([^#].*\s)?{{ persistent_volume_mount_point }}\s+'
+    line: >-
+      UUID={{ persistent_volume_uuid.stdout }} {{ persistent_volume_mount_point }}
+      {{ persistent_volume_filesystem }} {{ persistent_volume_mount_options }} 0 2
+    state: present
+    create: false
+
+- name: Mount the Cinder filesystem
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/mount
+      - "{{ persistent_volume_mount_point }}"
+  when: persistent_volume_mountpoint_state.rc != 0
+  changed_when: true
+
+- name: Verify the persistent filesystem is mounted from the expected UUID
+  ansible.builtin.shell: |
+    set -euo pipefail
+    [[ "$(findmnt -n -o UUID --target {{ persistent_volume_mount_point | quote }})" == {{ persistent_volume_uuid.stdout | quote }} ]]
+  args:
+    executable: /bin/bash
+  changed_when: false

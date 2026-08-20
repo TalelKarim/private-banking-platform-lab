@@ -1,0 +1,5 @@
+---
+persistent_volume_label: null
+persistent_volume_mount_point: null
+persistent_volume_filesystem: ext4
+persistent_volume_mount_options: defaults,nofail,x-systemd.device-timeout=30
