@@ -11,7 +11,7 @@ else
   printf '127.0.1.1 edge-gateway\n' >> /etc/hosts
 fi
 apt-get update
-apt-get install -y ca-certificates curl openssh-server python3 python3-apt
+apt-get install -y ca-certificates curl openssh-server python3 python3-apt ec2-instance-connect 
 systemctl enable --now ssh
 systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service || systemctl enable --now amazon-ssm-agent || true
 cat > /etc/motd <<'EOF'

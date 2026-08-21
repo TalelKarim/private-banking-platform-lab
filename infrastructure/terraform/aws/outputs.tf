@@ -186,6 +186,11 @@ output "edge_gateway_http_url" {
   value       = "http://${aws_eip.edge_gateway.public_ip}"
 }
 
+output "edge_gateway_ec2_instance_connect_command" {
+  description = "EC2 Instance Connect command for the edge gateway"
+  value       = "aws ec2-instance-connect ssh --instance-id ${aws_instance.edge_gateway.id} --connection-type direct --region ${var.aws_region}"
+}
+
 output "edge_gateway_ssm_command" {
   description = "SSM command for the edge gateway"
   value       = "aws ssm start-session --target ${aws_instance.edge_gateway.id} --region ${var.aws_region}"

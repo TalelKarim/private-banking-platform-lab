@@ -47,6 +47,26 @@ resource "aws_vpc_security_group_ingress_rule" "edge_gateway_https" {
   cidr_ipv4         = local.effective_edge_client_cidr
 }
 
+resource "aws_vpc_security_group_ingress_rule" "edge_gateway_ssh_from_mac" {
+  security_group_id = aws_security_group.edge_gateway.id
+
+  description = "SSH from the current Mac public IPv4"
+  ip_protocol = "tcp"
+  from_port   = 22
+  to_port     = 22
+  cidr_ipv4   = local.effective_ssh_cidr
+}
+
+resource "aws_vpc_security_group_ingress_rule" "edge_gateway_ssh_from_instance_connect" {
+  security_group_id = aws_security_group.edge_gateway.id
+
+  description    = "SSH from the regional EC2 Instance Connect service"
+  ip_protocol    = "tcp"
+  from_port      = 22
+  to_port        = 22
+  prefix_list_id = data.aws_ec2_managed_prefix_list.instance_connect.id
+}
+
 resource "aws_vpc_security_group_ingress_rule" "edge_gateway_ssh_from_ops_runner" {
   security_group_id            = aws_security_group.edge_gateway.id
   referenced_security_group_id = aws_security_group.ops_runner.id
