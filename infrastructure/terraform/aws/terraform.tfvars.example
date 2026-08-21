@@ -21,3 +21,11 @@ openstack_external_network_cidr = "192.168.250.0/24"
 
 # The matching private key is stored outside Terraform as an SSM SecureString.
 workload_ssh_private_key_ssm_parameter_name = "/private-banking-platform-lab/openstack/workload-ssh-private-key"
+
+# Dedicated ingress node. Its stable VPC /32 is trusted by lab-host forwarding
+# and OpenStack workload security groups.
+edge_gateway_instance_type    = "t3.micro"
+edge_gateway_root_volume_size = 12
+edge_gateway_private_ip       = "172.31.31.71"
+# edge_client_cidr = "82.10.20.30/32"
+edge_backend_tcp_ports = [8080]

@@ -8,6 +8,8 @@ UPLINK_IF="{{ openstack_management_interface }}"
 EXTERNAL_CIDR="{{ openstack_external_cidr }}"
 AWS_MANAGEMENT_CIDR="{{ openstack_aws_management_cidr }}"
 SSH_PORT="{{ openstack_management_ssh_port }}"
+EDGE_GATEWAY_CIDR="{{ openstack_edge_gateway_cidr }}"
+EDGE_BACKEND_TCP_PORTS=({% for port in openstack_edge_backend_tcp_ports %}"{{ port }}" {% endfor %})
 
 if ! ip link show "$HOST_IF" >/dev/null 2>&1; then
   ip link add "$HOST_IF" type veth peer name "$NEUTRON_IF"
@@ -35,6 +37,19 @@ iptables -C FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
     -s "$AWS_MANAGEMENT_CIDR" -d "$EXTERNAL_CIDR" \
     -p tcp --dport "$SSH_PORT" \
     -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+# Allow only the dedicated edge gateway to initiate application traffic toward
+# explicitly approved OpenStack floating-IP backend ports.
+for backend_port in "${EDGE_BACKEND_TCP_PORTS[@]}"; do
+  iptables -C FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
+    -s "$EDGE_GATEWAY_CIDR" -d "$EXTERNAL_CIDR" \
+    -p tcp --dport "$backend_port" \
+    -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
+      -s "$EDGE_GATEWAY_CIDR" -d "$EXTERNAL_CIDR" \
+      -p tcp --dport "$backend_port" \
+      -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+done
 
 iptables -t nat -C POSTROUTING -s "$EXTERNAL_CIDR" -o "$UPLINK_IF" -j MASQUERADE 2>/dev/null \
   || iptables -t nat -A POSTROUTING -s "$EXTERNAL_CIDR" -o "$UPLINK_IF" -j MASQUERADE

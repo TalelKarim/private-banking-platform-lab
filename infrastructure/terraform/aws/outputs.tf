@@ -165,3 +165,33 @@ output "ops_runner_workload_ssh_key_parameter_name" {
   description = "SSM SecureString path read by the ops runner for the OpenStack workload private key"
   value       = var.workload_ssh_private_key_ssm_parameter_name
 }
+
+output "edge_gateway_instance_id" {
+  description = "EC2 instance ID of the HTTP/HTTPS edge gateway"
+  value       = aws_instance.edge_gateway.id
+}
+
+output "edge_gateway_private_ip" {
+  description = "Stable private IPv4 address of the edge gateway"
+  value       = aws_instance.edge_gateway.private_ip
+}
+
+output "edge_gateway_public_ip" {
+  description = "Elastic IPv4 address of the edge gateway"
+  value       = aws_eip.edge_gateway.public_ip
+}
+
+output "edge_gateway_http_url" {
+  description = "Temporary direct HTTP URL before Route53/TLS"
+  value       = "http://${aws_eip.edge_gateway.public_ip}"
+}
+
+output "edge_gateway_ssm_command" {
+  description = "SSM command for the edge gateway"
+  value       = "aws ssm start-session --target ${aws_instance.edge_gateway.id} --region ${var.aws_region}"
+}
+
+output "edge_gateway_bootstrap_log_command" {
+  description = "Inspect edge cloud-init"
+  value       = "sudo cloud-init status --wait && sudo tail -n 200 /var/log/private-banking-lab-edge-gateway-bootstrap.log"
+}

@@ -36,6 +36,12 @@ locals {
     ? var.ssh_cidr
     : "${chomp(data.http.current_public_ipv4.response_body)}/32"
   )
+
+  effective_edge_client_cidr = (
+    var.edge_client_cidr != null
+    ? var.edge_client_cidr
+    : local.effective_ssh_cidr
+  )
 }
 
 data "aws_subnet" "selected" {

@@ -1,0 +1,64 @@
+---
+- name: Validate edge gateway routes
+  ansible.builtin.assert:
+    that:
+      - edge_nginx_routes | length > 0
+      - item.name | length > 0
+      - item.server_name | length > 0
+      - item.backend_scheme in ['http', 'https']
+      - item.backend_host | length > 0
+      - item.backend_port | int > 0
+      - item.backend_port | int < 65536
+  loop: "{{ edge_nginx_routes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install Nginx
+  ansible.builtin.apt:
+    name: "{{ edge_nginx_package }}"
+    state: present
+    update_cache: true
+
+- name: Remove the distribution default Nginx site
+  ansible.builtin.file:
+    path: "{{ edge_nginx_sites_enabled_dir }}/default"
+    state: absent
+  notify: Validate and reload Nginx
+
+- name: Render managed edge virtual hosts
+  ansible.builtin.template:
+    src: route.conf.j2
+    dest: "{{ edge_nginx_sites_available_dir }}/{{ edge_nginx_managed_prefix }}{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ edge_nginx_routes }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Validate and reload Nginx
+
+- name: Enable managed edge virtual hosts
+  ansible.builtin.file:
+    src: "{{ edge_nginx_sites_available_dir }}/{{ edge_nginx_managed_prefix }}{{ item.name }}.conf"
+    dest: "{{ edge_nginx_sites_enabled_dir }}/{{ edge_nginx_managed_prefix }}{{ item.name }}.conf"
+    state: link
+  loop: "{{ edge_nginx_routes }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Validate and reload Nginx
+
+- name: Flush Nginx handlers before validation
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Nginx is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ edge_nginx_service }}"
+    enabled: true
+    state: started
+
+- name: Verify Nginx can proxy the default route locally
+  ansible.builtin.uri:
+    url: http://127.0.0.1/
+    status_code: [200, 301, 302, 401, 403]
+    return_content: false
+  changed_when: false

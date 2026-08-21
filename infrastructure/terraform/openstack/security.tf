@@ -77,3 +77,13 @@ resource "openstack_networking_secgroup_rule_v2" "jenkins_egress_ipv4" {
   ethertype         = "IPv4"
   security_group_id = openstack_networking_secgroup_v2.jenkins.id
 }
+
+resource "openstack_networking_secgroup_rule_v2" "jenkins_ui_edge_gateway" {
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  protocol          = "tcp"
+  port_range_min    = 8080
+  port_range_max    = 8080
+  remote_ip_prefix  = var.edge_gateway_source_cidr
+  security_group_id = openstack_networking_secgroup_v2.jenkins.id
+}

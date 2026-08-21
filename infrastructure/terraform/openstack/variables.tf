@@ -243,3 +243,13 @@ variable "jenkins_security_group_name" {
   type        = string
   default     = "jenkins-controller"
 }
+
+variable "edge_gateway_source_cidr" {
+  description = "Stable AWS edge-gateway address allowed to reach web workloads through floating IPs"
+  type        = string
+  default     = "172.31.31.71/32"
+  validation {
+    condition     = can(cidrnetmask(var.edge_gateway_source_cidr))
+    error_message = "edge_gateway_source_cidr must be a valid IPv4 CIDR."
+  }
+}

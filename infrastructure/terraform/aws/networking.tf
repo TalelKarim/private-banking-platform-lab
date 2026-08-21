@@ -99,3 +99,15 @@ resource "aws_route" "openstack_external_via_lab_host" {
   destination_cidr_block = var.openstack_external_network_cidr
   network_interface_id   = aws_instance.lab.primary_network_interface_id
 }
+
+# Application traffic from the dedicated edge is allowed to cross the lab-host
+# only on explicit backend ports. The lab-host remains a router, not a proxy.
+resource "aws_vpc_security_group_ingress_rule" "openstack_backend_from_edge" {
+  for_each = var.edge_backend_tcp_ports
+  security_group_id            = aws_security_group.lab.id
+  referenced_security_group_id = aws_security_group.edge_gateway.id
+  description = "OpenStack backend TCP/${each.value} transit from the edge gateway"
+  ip_protocol = "tcp"
+  from_port   = each.value
+  to_port     = each.value
+}

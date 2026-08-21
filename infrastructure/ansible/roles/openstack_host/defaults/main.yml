@@ -11,6 +11,9 @@ openstack_external_cidr: 192.168.250.0/24
 openstack_external_host_address: 192.168.250.1/24
 openstack_aws_management_cidr: 172.31.16.0/20
 openstack_management_ssh_port: 22
+openstack_edge_gateway_cidr: 172.31.31.71/32
+openstack_edge_backend_tcp_ports:
+  - 8080
 
 cinder_volume_group: cinder-volumes
 

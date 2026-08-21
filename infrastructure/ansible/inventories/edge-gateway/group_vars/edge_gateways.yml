@@ -1,0 +1,12 @@
+---
+common_linux_hostname: edge-gateway
+edge_nginx_client_max_body_size: 64m
+edge_nginx_proxy_read_timeout_seconds: 300
+edge_nginx_proxy_send_timeout_seconds: 300
+edge_nginx_routes:
+  - name: jenkins
+    server_name: "_"
+    default_server: true
+    backend_scheme: http
+    backend_host: "{{ jenkins_floating_ip }}"
+    backend_port: 8080

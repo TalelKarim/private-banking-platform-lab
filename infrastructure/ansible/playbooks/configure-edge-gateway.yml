@@ -1,0 +1,8 @@
+---
+- name: Configure the AWS edge gateway
+  hosts: edge_gateways
+  become: true
+  gather_facts: true
+  roles:
+    - role: common_linux
+    - role: edge_gateway

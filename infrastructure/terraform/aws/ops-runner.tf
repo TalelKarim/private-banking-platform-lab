@@ -192,6 +192,21 @@ resource "aws_instance" "ops_runner" {
     aws_iam_role_policy.ops_runner_hcp_agent_token,
     aws_iam_role_policy.ops_runner_workload_ssh_key,
     aws_iam_role_policy.ops_runner_jenkins_admin_password,
+    aws_iam_role_policy.ops_runner_lab_ssh_key,
+    aws_ssm_parameter.lab_ssh_private_key,
     local_sensitive_file.ssh_private_key
   ]
+}
+
+resource "aws_iam_role_policy" "ops_runner_lab_ssh_key" {
+  name = "${var.project_name}-ops-runner-lab-ssh-key"
+  role = aws_iam_role.ops_runner.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameter"]
+      Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${var.lab_ssh_private_key_ssm_parameter_name}"
+    }]
+  })
 }

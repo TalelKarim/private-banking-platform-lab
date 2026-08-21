@@ -27,3 +27,13 @@ resource "aws_key_pair" "lab" {
     Name = "${var.project_name}-key"
   }
 }
+
+# Terraform already owns this EC2 SSH key. The SecureString copy lets the
+# ops-runner retrieve it only during Ansible runs against AWS-side utility VMs.
+resource "aws_ssm_parameter" "lab_ssh_private_key" {
+  name        = var.lab_ssh_private_key_ssm_parameter_name
+  description = "Private SSH key for Terraform-managed AWS lab instances"
+  type        = "SecureString"
+  value       = tls_private_key.lab.private_key_pem
+  tags = { Name = "${var.project_name}-lab-ssh-private-key" }
+}

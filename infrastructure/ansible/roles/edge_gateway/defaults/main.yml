@@ -1,0 +1,10 @@
+---
+edge_nginx_package: nginx
+edge_nginx_service: nginx
+edge_nginx_sites_available_dir: /etc/nginx/sites-available
+edge_nginx_sites_enabled_dir: /etc/nginx/sites-enabled
+edge_nginx_managed_prefix: private-banking-
+edge_nginx_client_max_body_size: 64m
+edge_nginx_proxy_read_timeout_seconds: 300
+edge_nginx_proxy_send_timeout_seconds: 300
+edge_nginx_routes: []

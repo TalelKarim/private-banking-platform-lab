@@ -182,3 +182,59 @@ variable "jenkins_admin_password_ssm_parameter_name" {
     error_message = "jenkins_admin_password_ssm_parameter_name must be an absolute SSM parameter path."
   }
 }
+
+variable "edge_gateway_instance_type" {
+  description = "EC2 instance type used by the HTTP/HTTPS edge gateway"
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "edge_gateway_root_volume_size" {
+  description = "Root EBS volume size in GiB for the edge gateway"
+  type        = number
+  default     = 12
+  validation {
+    condition     = var.edge_gateway_root_volume_size >= 8
+    error_message = "The edge gateway root volume must be at least 8 GiB."
+  }
+}
+
+variable "edge_gateway_private_ip" {
+  description = "Stable private IPv4 used by the edge gateway inside the selected AWS subnet"
+  type        = string
+  default     = "172.31.31.71"
+  validation {
+    condition     = can(cidrnetmask("${var.edge_gateway_private_ip}/32"))
+    error_message = "edge_gateway_private_ip must be a valid IPv4 address."
+  }
+}
+
+variable "edge_client_cidr" {
+  description = "CIDR allowed to reach the edge gateway on HTTP/HTTPS. Null reuses the detected Mac public IPv4 CIDR."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.edge_client_cidr == null || can(cidrnetmask(var.edge_client_cidr))
+    error_message = "edge_client_cidr must be a valid IPv4 CIDR such as 82.10.20.30/32."
+  }
+}
+
+variable "edge_backend_tcp_ports" {
+  description = "OpenStack floating-IP TCP ports that the edge gateway may reach through the lab host"
+  type        = set(number)
+  default     = [8080]
+  validation {
+    condition     = alltrue([for port in var.edge_backend_tcp_ports : port >= 1 && port <= 65535])
+    error_message = "edge_backend_tcp_ports must contain valid TCP port numbers."
+  }
+}
+
+variable "lab_ssh_private_key_ssm_parameter_name" {
+  description = "SSM SecureString used temporarily by the ops-runner when Ansible manages AWS lab instances such as the edge gateway"
+  type        = string
+  default     = "/private-banking-platform-lab/aws/lab-ssh-private-key"
+  validation {
+    condition     = startswith(var.lab_ssh_private_key_ssm_parameter_name, "/") && length(var.lab_ssh_private_key_ssm_parameter_name) > 1
+    error_message = "lab_ssh_private_key_ssm_parameter_name must be an absolute SSM parameter path."
+  }
+}
