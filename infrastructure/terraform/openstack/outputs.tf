@@ -92,3 +92,14 @@ output "jenkins_controller" {
     data_volume_path = module.jenkins_controller.data_volume_device
   }
 }
+
+output "jenkins_worker" {
+  description = "Dedicated Jenkins build worker and its network addresses"
+  value = {
+    instance_id = module.jenkins_worker.instance_id
+    name        = module.jenkins_worker.instance_name
+    fixed_ip    = module.jenkins_worker.fixed_ip
+    floating_ip = module.jenkins_worker.floating_ip
+    port_id     = module.jenkins_worker.port_id
+  }
+}

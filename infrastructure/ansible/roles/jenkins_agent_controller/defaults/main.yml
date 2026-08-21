@@ -1,0 +1,16 @@
+---
+jenkins_agent_node_name: jenkins-agent-01
+jenkins_agent_remote_fs: /var/lib/jenkins-agent
+jenkins_agent_labels: "lab-worker java-maven dotnet"
+jenkins_agent_executors: 1
+jenkins_agent_description: "Private Banking Platform Lab build worker"
+
+jenkins_agent_smoke_job_name: platform-worker-smoke
+jenkins_agent_smoke_job_description: "Infrastructure smoke test for the dedicated Jenkins worker"
+jenkins_agent_smoke_pipeline_definition: null
+
+jenkins_agent_cli_jar: /var/cache/jenkins/jenkins-cli.jar
+jenkins_agent_registration_dir: /run/jenkins-agent-registration
+jenkins_agent_controller_http_port: 8080
+jenkins_agent_admin_username: admin
+jenkins_agent_admin_password: null

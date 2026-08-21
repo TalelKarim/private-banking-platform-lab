@@ -1,0 +1,7 @@
+---
+common_linux_hostname: jenkins-agent-01
+
+jenkins_agent_controller_url: http://10.10.0.20:8080/
+jenkins_agent_java_package: openjdk-21-jdk
+jenkins_agent_maven_package: maven
+jenkins_agent_dotnet_package: dotnet-sdk-8.0

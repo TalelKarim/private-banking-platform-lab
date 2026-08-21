@@ -1,0 +1,7 @@
+---
+# Shared Jenkins execution-plane contract. These values are consumed by both
+# the controller-side node registration and the worker-side Remoting service.
+jenkins_agent_node_name: jenkins-agent-01
+jenkins_agent_remote_fs: /var/lib/jenkins-agent
+jenkins_agent_labels: "lab-worker java-maven dotnet"
+jenkins_agent_executors: 1

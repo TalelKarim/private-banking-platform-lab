@@ -1,0 +1,59 @@
+pipeline {
+    agent { label 'lab-worker' }
+
+    options {
+        disableConcurrentBuilds()
+    }
+
+    stages {
+        stage('Assert dedicated worker') {
+            steps {
+                sh '''
+                    echo "NODE_NAME=${NODE_NAME}"
+                    test "${NODE_NAME}" = "jenkins-agent-01"
+                '''
+            }
+        }
+
+        stage('Toolchain') {
+            steps {
+                sh '''
+                    java -version
+                    javac -version
+                    mvn -version
+                    dotnet --version
+                '''
+            }
+        }
+
+        stage('Checkout smoke sources') {
+            steps {
+                deleteDir()
+                git branch: 'main', url: 'https://github.com/TalelKarim/private-banking-platform-lab.git'
+            }
+        }
+
+        stage('Java Maven smoke') {
+            steps {
+                dir('cicd/smoke-tests/java-maven') {
+                    sh 'mvn --batch-mode --no-transfer-progress clean verify'
+                }
+            }
+        }
+
+        stage('.NET smoke') {
+            steps {
+                dir('cicd/smoke-tests/dotnet') {
+                    sh 'dotnet restore RiskEngineSmoke.Tests/RiskEngineSmoke.Tests.csproj'
+                    sh 'dotnet test RiskEngineSmoke.Tests/RiskEngineSmoke.Tests.csproj --configuration Release --no-restore'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            archiveArtifacts artifacts: 'cicd/smoke-tests/java-maven/target/*.jar', fingerprint: true
+        }
+    }
+}

@@ -1,0 +1,84 @@
+---
+- name: Register the Jenkins worker on the controller
+  hosts: jenkins_controllers
+  gather_facts: false
+  become: true
+
+  pre_tasks:
+    - name: Read the Jenkins administrator password from SSM on the ops-runner
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/aws
+          - ssm
+          - get-parameter
+          - --region
+          - "{{ jenkins_admin_password_aws_region }}"
+          - --name
+          - "{{ jenkins_admin_password_ssm_parameter_name }}"
+          - --with-decryption
+          - --query
+          - Parameter.Value
+          - --output
+          - text
+      delegate_to: localhost
+      become: false
+      register: jenkins_worker_admin_password_lookup
+      changed_when: false
+      no_log: true
+
+    - name: Hold the Jenkins administrator password only in Ansible memory
+      ansible.builtin.set_fact:
+        jenkins_admin_password: "{{ jenkins_worker_admin_password_lookup.stdout }}"
+      no_log: true
+
+  roles:
+    - role: jenkins_agent_controller
+      vars:
+        jenkins_agent_admin_username: "{{ jenkins_admin_username }}"
+        jenkins_agent_admin_password: "{{ jenkins_admin_password }}"
+        jenkins_agent_smoke_pipeline_definition: >-
+          {{ lookup('ansible.builtin.file', playbook_dir + '/../../../cicd/smoke-tests/Jenkinsfile') }}
+
+- name: Configure the Jenkins build worker
+  hosts: jenkins_workers
+  gather_facts: true
+  become: true
+
+  vars:
+    jenkins_agent_secret: "{{ hostvars[groups['jenkins_controllers'][0]]['jenkins_agent_secret'] }}"
+
+  roles:
+    - role: common_linux
+    - role: jenkins_worker
+
+- name: Verify the Jenkins worker is online from the controller
+  hosts: jenkins_controllers
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Wait for Jenkins to report the worker online
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ jenkins_http_port }}/computer/{{ jenkins_agent_node_name }}/api/json"
+        user: "{{ jenkins_admin_username }}"
+        password: "{{ jenkins_admin_password }}"
+        force_basic_auth: true
+        status_code: 200
+        return_content: true
+      register: jenkins_agent_online_status
+      until:
+        - jenkins_agent_online_status.json is defined
+        - not (jenkins_agent_online_status.json.offline | bool)
+      retries: 45
+      delay: 2
+      changed_when: false
+      no_log: true
+
+    - name: Report Jenkins worker validation summary
+      ansible.builtin.debug:
+        msg:
+          - "jenkins_worker={{ jenkins_agent_node_name }}"
+          - "labels={{ jenkins_agent_labels }}"
+          - "executors={{ jenkins_agent_executors }}"
+          - "remoting=websocket"
+          - "status=online"

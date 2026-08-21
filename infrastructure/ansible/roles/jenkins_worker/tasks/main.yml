@@ -1,0 +1,153 @@
+---
+- name: Validate Jenkins worker inputs
+  ansible.builtin.assert:
+    that:
+      - jenkins_agent_controller_url is match('^https?://')
+      - jenkins_agent_node_name is string
+      - jenkins_agent_node_name | length > 0
+      - jenkins_agent_remote_fs is string
+      - jenkins_agent_remote_fs | length > 0
+      - jenkins_agent_secret is string
+      - jenkins_agent_secret | length >= 32
+    fail_msg: "The Jenkins worker requires a controller URL, node name, remote filesystem and inbound agent secret."
+  no_log: true
+
+- name: Install the Jenkins build toolchain
+  ansible.builtin.apt:
+    name:
+      - "{{ jenkins_agent_java_package }}"
+      - "{{ jenkins_agent_maven_package }}"
+      - "{{ jenkins_agent_dotnet_package }}"
+    state: present
+    update_cache: true
+
+- name: Create the Jenkins agent group
+  ansible.builtin.group:
+    name: "{{ jenkins_agent_group }}"
+    system: true
+    state: present
+
+- name: Create the Jenkins agent user
+  ansible.builtin.user:
+    name: "{{ jenkins_agent_user }}"
+    group: "{{ jenkins_agent_group }}"
+    home: "{{ jenkins_agent_remote_fs }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+    state: present
+
+- name: Create Jenkins agent directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ jenkins_agent_jar_dir }}"
+      owner: root
+      group: root
+      mode: "0755"
+    - path: "{{ jenkins_agent_config_dir }}"
+      owner: root
+      group: "{{ jenkins_agent_group }}"
+      mode: "0750"
+    - path: "{{ jenkins_agent_remote_fs }}"
+      owner: "{{ jenkins_agent_user }}"
+      group: "{{ jenkins_agent_group }}"
+      mode: "0750"
+    - path: "{{ jenkins_agent_remote_fs }}/.m2/repository"
+      owner: "{{ jenkins_agent_user }}"
+      group: "{{ jenkins_agent_group }}"
+      mode: "0750"
+    - path: "{{ jenkins_agent_remote_fs }}/.nuget/packages"
+      owner: "{{ jenkins_agent_user }}"
+      group: "{{ jenkins_agent_group }}"
+      mode: "0750"
+
+- name: Download the controller-matched Jenkins Remoting agent
+  ansible.builtin.get_url:
+    url: "{{ jenkins_agent_controller_url }}jnlpJars/agent.jar"
+    dest: "{{ jenkins_agent_jar_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: true
+  notify: Restart Jenkins agent
+
+- name: Write the inbound Jenkins agent secret
+  ansible.builtin.copy:
+    content: "{{ jenkins_agent_secret }}\n"
+    dest: "{{ jenkins_agent_secret_file }}"
+    owner: root
+    group: "{{ jenkins_agent_group }}"
+    mode: "0640"
+  notify: Restart Jenkins agent
+  no_log: true
+
+- name: Configure the Jenkins agent environment
+  ansible.builtin.template:
+    src: agent.env.j2
+    dest: "{{ jenkins_agent_environment_file }}"
+    owner: root
+    group: "{{ jenkins_agent_group }}"
+    mode: "0640"
+  notify: Restart Jenkins agent
+
+- name: Install the Jenkins agent systemd unit
+  ansible.builtin.template:
+    src: jenkins-agent.service.j2
+    dest: "/etc/systemd/system/{{ jenkins_agent_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Jenkins agent
+
+- name: Enable and start the Jenkins agent service
+  ansible.builtin.systemd_service:
+    name: "{{ jenkins_agent_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Flush Jenkins agent restart handlers before validation
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify Java runtime on the Jenkins worker
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/java
+      - -version
+  changed_when: false
+
+- name: Verify Java compiler on the Jenkins worker
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/javac
+      - -version
+  changed_when: false
+
+- name: Verify Maven on the Jenkins worker
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/mvn
+      - -version
+  changed_when: false
+
+- name: Verify .NET SDK on the Jenkins worker
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dotnet
+      - --version
+  changed_when: false
+
+- name: Verify Jenkins agent service is active
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - is-active
+      - "{{ jenkins_agent_service_name }}.service"
+  register: jenkins_agent_service_state
+  changed_when: false
+  failed_when: jenkins_agent_service_state.stdout != "active"

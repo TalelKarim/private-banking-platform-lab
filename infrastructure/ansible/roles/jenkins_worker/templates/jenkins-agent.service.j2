@@ -1,0 +1,18 @@
+[Unit]
+Description=Jenkins inbound build agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ jenkins_agent_user }}
+Group={{ jenkins_agent_group }}
+WorkingDirectory={{ jenkins_agent_remote_fs }}
+EnvironmentFile={{ jenkins_agent_environment_file }}
+ExecStart=/usr/bin/java -jar {{ jenkins_agent_jar_path }} -url ${JENKINS_URL} -secret @{{ jenkins_agent_secret_file }} -name ${JENKINS_AGENT_NAME} -webSocket -workDir ${JENKINS_AGENT_WORKDIR}
+Restart=always
+RestartSec=5
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

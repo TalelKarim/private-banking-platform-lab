@@ -87,3 +87,15 @@ resource "openstack_networking_secgroup_rule_v2" "jenkins_ui_edge_gateway" {
   remote_ip_prefix  = var.edge_gateway_source_cidr
   security_group_id = openstack_networking_secgroup_v2.jenkins.id
 }
+
+resource "openstack_networking_secgroup_v2" "jenkins_worker" {
+  name                 = var.jenkins_worker_security_group_name
+  description          = "Dedicated Jenkins build worker traffic"
+  delete_default_rules = true
+}
+
+resource "openstack_networking_secgroup_rule_v2" "jenkins_worker_egress_ipv4" {
+  direction         = "egress"
+  ethertype         = "IPv4"
+  security_group_id = openstack_networking_secgroup_v2.jenkins_worker.id
+}

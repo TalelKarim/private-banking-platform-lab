@@ -1,0 +1,106 @@
+---
+- name: Validate Jenkins agent registration inputs
+  ansible.builtin.assert:
+    that:
+      - jenkins_agent_node_name is string
+      - jenkins_agent_node_name | length > 0
+      - jenkins_agent_remote_fs is string
+      - jenkins_agent_remote_fs | length > 0
+      - jenkins_agent_labels is string
+      - jenkins_agent_labels | length > 0
+      - jenkins_agent_executors | int >= 1
+      - jenkins_agent_admin_username is string
+      - jenkins_agent_admin_username | length > 0
+      - jenkins_agent_admin_password is string
+      - jenkins_agent_admin_password | length >= 16
+      - jenkins_agent_smoke_pipeline_definition is string
+      - jenkins_agent_smoke_pipeline_definition | length > 0
+    fail_msg: "Jenkins agent registration requires the node definition, administrator credential and smoke pipeline definition."
+  no_log: true
+
+- name: Ensure the Jenkins CLI cache directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_agent_cli_jar | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download the Jenkins CLI from the local controller
+  ansible.builtin.get_url:
+    url: "http://127.0.0.1:{{ jenkins_agent_controller_http_port }}/jnlpJars/jenkins-cli.jar"
+    dest: "{{ jenkins_agent_cli_jar }}"
+    owner: root
+    group: root
+    mode: "0644"
+    url_username: "{{ jenkins_agent_admin_username }}"
+    url_password: "{{ jenkins_agent_admin_password }}"
+    force_basic_auth: true
+  no_log: true
+
+- name: Register the Jenkins worker and smoke pipeline
+  block:
+    - name: Create the runtime-only Jenkins agent registration directory
+      ansible.builtin.file:
+        path: "{{ jenkins_agent_registration_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Write runtime-only Jenkins CLI authentication
+      ansible.builtin.copy:
+        content: "{{ jenkins_agent_admin_username }}:{{ jenkins_agent_admin_password }}\n"
+        dest: "{{ jenkins_agent_registration_dir }}/cli-auth"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Create or reconcile the inbound Jenkins worker node and smoke job
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/java
+          - -jar
+          - "{{ jenkins_agent_cli_jar }}"
+          - -s
+          - "http://127.0.0.1:{{ jenkins_agent_controller_http_port }}/"
+          - -http
+          - -auth
+          - "@{{ jenkins_agent_registration_dir }}/cli-auth"
+          - groovy
+          - "="
+        stdin: "{{ lookup('ansible.builtin.template', role_path + '/templates/register-agent.groovy.j2') }}"
+      register: jenkins_agent_registration
+      changed_when: >-
+        'CONTROLLER_CHANGED=true' in jenkins_agent_registration.stdout
+        or 'NODE_CHANGED=true' in jenkins_agent_registration.stdout
+        or 'JOB_CHANGED=true' in jenkins_agent_registration.stdout
+      no_log: true
+
+    - name: Hold the inbound agent secret only in Ansible memory
+      ansible.builtin.set_fact:
+        jenkins_agent_secret: >-
+          {{
+            (
+              jenkins_agent_registration.stdout
+              | regex_findall('JENKINS_AGENT_SECRET=([A-Fa-f0-9]{32,})')
+              | first
+            )
+          }}
+      no_log: true
+
+    - name: Validate that Jenkins returned an inbound agent secret
+      ansible.builtin.assert:
+        that:
+          - jenkins_agent_secret is string
+          - jenkins_agent_secret | length >= 32
+        fail_msg: "Jenkins did not return a usable inbound agent secret."
+      no_log: true
+
+  always:
+    - name: Remove runtime Jenkins agent registration credentials
+      ansible.builtin.file:
+        path: "{{ jenkins_agent_registration_dir }}"
+        state: absent
+      no_log: true

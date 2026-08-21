@@ -1,13 +1,15 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-edge-gateway prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-jenkins-worker test-jenkins-worker configure-edge-gateway prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
 	  'bootstrap-ansible     Install the local Ansible control environment and configure the host' \
 	  'configure-lab         Discover runtime addresses and converge all lab services from ops-runner' \
 	  'configure-jenkins    Configure and validate the Jenkins controller from the ops-runner' \
+	  'configure-jenkins-worker Configure/register the dedicated Jenkins build worker' \
+	  'test-jenkins-worker Run the Java/.NET smoke pipeline on the dedicated Jenkins worker' \
 	  'configure-edge-gateway Configure Nginx ingress on the edge gateway from the ops-runner' \
 	  'prepare-openstack     Configure the host, run Kolla bootstrap-servers and prechecks' \
 	  'deploy-openstack      Pull images, deploy OpenStack and generate admin credentials' \
@@ -30,6 +32,14 @@ configure-lab:
 configure-jenkins:
 	@test -n "$(JENKINS_FLOATING_IP)" || (echo "Usage: make configure-jenkins JENKINS_FLOATING_IP=192.168.250.x" >&2; exit 2)
 	./scripts/configure-jenkins.sh "$(JENKINS_FLOATING_IP)"
+
+configure-jenkins-worker:
+	@test -n "$(JENKINS_FLOATING_IP)" || (echo "Usage: make configure-jenkins-worker JENKINS_FLOATING_IP=192.168.250.x JENKINS_WORKER_FLOATING_IP=192.168.250.y" >&2; exit 2)
+	@test -n "$(JENKINS_WORKER_FLOATING_IP)" || (echo "Usage: make configure-jenkins-worker JENKINS_FLOATING_IP=192.168.250.x JENKINS_WORKER_FLOATING_IP=192.168.250.y" >&2; exit 2)
+	./scripts/configure-jenkins-worker.sh "$(JENKINS_FLOATING_IP)" "$(JENKINS_WORKER_FLOATING_IP)"
+
+test-jenkins-worker:
+	./scripts/test-jenkins-worker.sh "$(JENKINS_FLOATING_IP)"
 
 configure-edge-gateway:
 	@test -n "$(JENKINS_FLOATING_IP)" || (echo "Usage: make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x" >&2; exit 2)

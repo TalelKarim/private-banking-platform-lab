@@ -13,9 +13,9 @@ AWS infrastructure
                   -> PostgreSQL / OpenShift / applications / observability
 ```
 
-## Current implemented phase
+## Architecture and operating model
 
-The infrastructure foundation and the first platform service are now validated end to end.
+The lab is built as separate provisioning, configuration and platform layers.
 
 - Terraform AWS creates `lab-host`, `ops-runner` and `edge-gateway` with the required IAM, Security Groups, routes and storage.
 - `lab-host` can boot from the validated Golden AMI, which avoids reinstalling the complete Kolla/OpenStack control plane during the daily lab rebuild.
@@ -27,7 +27,7 @@ The infrastructure foundation and the first platform service are now validated e
 - `jenkins-controller` is provisioned on `10.10.0.20` with a dedicated persistent Cinder data volume for `JENKINS_HOME`.
 - Ansible installs and configures Jenkins LTS on Java 21, bootstraps the administrator from SSM, disables anonymous access and installs the baseline plugins.
 - `edge-gateway` exposes the web ingress through its AWS Elastic IP; Ansible installs Nginx and proxies Jenkins traffic to its OpenStack Floating IP.
-- `make configure-lab`, executed from `ops-runner`, is now the single convergence entry point for the configuration layer. It discovers the current Jenkins Floating IP and converges Jenkins and the edge gateway automatically.
+- `make configure-lab`, executed from `ops-runner`, is the single convergence entry point for the configuration layer. It discovers the Jenkins controller and worker Floating IPs, converges both Jenkins nodes, verifies the worker Remoting channel, and then converges the edge gateway.
 
 ## Daily rebuild workflow
 
@@ -38,11 +38,11 @@ The normal lab rebuild is intentionally reduced to three operator actions:
    -> lab-host + ops-runner + edge-gateway
 
 2. Terraform OpenStack apply
-   -> networks + router + Jenkins VM/volume/Floating IP
+   -> networks + router + Jenkins controller/worker + required storage/Floating IPs
 
 3. On ops-runner:
    make configure-lab
-   -> Jenkins + Nginx convergence
+   -> Jenkins controller + worker + Nginx convergence
 ```
 
 See `docs/runbooks/daily-lab-rebuild.md` for the exact procedure.
@@ -73,6 +73,10 @@ Individual configuration targets remain available for troubleshooting:
 
 ```bash
 make configure-jenkins JENKINS_FLOATING_IP=192.168.250.x
+make configure-jenkins-worker \
+  JENKINS_FLOATING_IP=192.168.250.x \
+  JENKINS_WORKER_FLOATING_IP=192.168.250.y
+make test-jenkins-worker
 make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x
 ```
 
@@ -93,28 +97,32 @@ private-banking-platform-lab/
 ├── applications/
 │   ├── portfolio-java/
 │   └── risk-engine-dotnet/
+├── cicd/
+│   └── smoke-tests/
 ├── scripts/
 ├── docs/
 └── Makefile
 ```
 
-## Current next step
+## Platform build order
 
-Build the **Jenkins execution plane** instead of running builds on the controller:
+The platform follows `docs/roadmap.md` in infrastructure-first order:
 
-1. create a dedicated Jenkins build-agent VM in OpenStack with Terraform;
-2. configure it with Ansible (Java 21, Maven, Git and Jenkins agent prerequisites);
-3. connect it to the controller over the private OpenStack network;
-4. run the first real Java pipeline on the agent (`checkout -> mvn clean verify -> package -> archive artifact`);
-5. validate that no build workload runs on the Jenkins controller.
+1. Jenkins controller and dedicated build worker;
+2. PostgreSQL VM, Ansible configuration, persistence, backup and restore;
+3. OpenShift/OKD infrastructure, node preparation, cluster installation and platform layer;
+4. real Spring Boot `portfolio-java` and .NET `risk-engine-dotnet` applications;
+5. container images, registry, Helm and Jenkins CI/CD;
+6. Prometheus, Grafana, centralised logs, alerting, hardening and resilience scenarios.
 
-After that, the lab moves to the application/data platform: PostgreSQL, the Spring Boot and .NET workloads, then OpenShift and observability.
+The tiny Java/.NET projects under `cicd/smoke-tests/` are infrastructure probes only; they do not start the application implementation phase.
 
-See `docs/roadmap.md` for the complete phase plan.
+See `docs/roadmap.md` for the complete fixed A-to-Z plan.
 
 ## Workload runbooks
 
 - Daily rebuild: `docs/runbooks/daily-lab-rebuild.md`
 - Jenkins controller: `docs/runbooks/jenkins-controller.md`
+- Jenkins worker: `docs/runbooks/jenkins-worker.md`
 - Edge gateway: `docs/runbooks/edge-gateway.md`
 - OpenStack workload access: `docs/runbooks/openstack-workload-access.md`

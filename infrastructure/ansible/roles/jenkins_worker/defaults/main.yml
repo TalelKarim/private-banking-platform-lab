@@ -1,0 +1,16 @@
+---
+jenkins_agent_controller_url: http://10.10.0.20:8080/
+jenkins_agent_node_name: jenkins-agent-01
+jenkins_agent_remote_fs: /var/lib/jenkins-agent
+jenkins_agent_secret: null
+jenkins_agent_java_package: openjdk-21-jdk
+jenkins_agent_maven_package: maven
+jenkins_agent_dotnet_package: dotnet-sdk-8.0
+jenkins_agent_user: jenkins
+jenkins_agent_group: jenkins
+jenkins_agent_jar_dir: /opt/jenkins-agent
+jenkins_agent_jar_path: /opt/jenkins-agent/agent.jar
+jenkins_agent_config_dir: /etc/jenkins-agent
+jenkins_agent_secret_file: /etc/jenkins-agent/secret
+jenkins_agent_environment_file: /etc/jenkins-agent/agent.env
+jenkins_agent_service_name: jenkins-agent

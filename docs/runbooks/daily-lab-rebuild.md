@@ -12,9 +12,7 @@ The lab is intentionally destroyed when it is not being used to reduce AWS/EBS c
 make configure-lab
 ```
 
-`configure-lab` is the single configuration/convergence entry point. It currently discovers the Jenkins Floating IP, configures the Jenkins controller with Ansible, then configures the edge gateway/Nginx with Ansible.
-
-Future workload playbooks (starting with the Jenkins build agent) must be added behind this target so the daily operator workflow stays one command.
+`configure-lab` is the single configuration/convergence entry point. It discovers the Jenkins controller and worker Floating IPs, configures the controller, registers and configures the dedicated worker, waits for the worker Remoting channel to be online, then configures the edge gateway/Nginx. Future workload playbooks must continue to be added behind this target so the daily operator workflow stays one command.
 
 ## Expected operator workflow
 
@@ -47,7 +45,7 @@ To avoid copying OpenStack admin credentials to `ops-runner`, `scripts/discover-
 1. retrieves the existing AWS lab SSH key temporarily from SSM Parameter Store;
 2. connects over the private AWS network from `ops-runner` to `lab-host`;
 3. uses the OpenStack CLI and the local `kolla-admin` cloud on `lab-host`;
-4. resolves the Jenkins networking object and its associated Floating IP in the provider CIDR `192.168.250.0/24`;
+4. resolves the requested workload Neutron port and its associated Floating IP in the provider CIDR `192.168.250.0/24`;
 5. returns only that runtime address to `ops-runner`;
 6. removes the temporary SSH key when the script exits.
 
@@ -56,7 +54,9 @@ The discovery path must fail with a useful error if SSH/OpenStack access itself 
 For troubleshooting only, automatic discovery can be bypassed:
 
 ```bash
-make configure-lab JENKINS_FLOATING_IP=192.168.250.123
+make configure-lab \
+  JENKINS_FLOATING_IP=192.168.250.123 \
+  JENKINS_WORKER_FLOATING_IP=192.168.250.124
 ```
 
 ## Success criteria
@@ -64,10 +64,12 @@ make configure-lab JENKINS_FLOATING_IP=192.168.250.123
 A successful daily rebuild ends with:
 
 ```text
-Jenkins            READY
-Edge gateway       READY
-Jenkins FIP        192.168.250.x
+Jenkins controller       READY
+Jenkins worker           ONLINE
+Edge gateway             READY
+Controller FIP           192.168.250.x
+Worker FIP               192.168.250.y
 LAB CONFIGURATION READY
 ```
 
-At that point Jenkins must be reachable through the edge gateway and the controller service must be active.
+At that point Jenkins must be reachable through the edge gateway, the controller service must be active, and `jenkins-agent-01` must be online. Use `make test-jenkins-worker` when you want to execute the Java/.NET infrastructure smoke pipeline.

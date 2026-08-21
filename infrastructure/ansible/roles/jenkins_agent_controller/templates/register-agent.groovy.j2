@@ -1,0 +1,103 @@
+import hudson.model.Node
+import hudson.slaves.DumbSlave
+import hudson.slaves.JNLPLauncher
+import hudson.slaves.RetentionStrategy
+import jenkins.model.Jenkins
+import jenkins.slaves.JnlpAgentReceiver
+import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition
+import org.jenkinsci.plugins.workflow.job.WorkflowJob
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
+Jenkins jenkins = Jenkins.get()
+String nodeName = {{ jenkins_agent_node_name | to_json }}
+String remoteFs = {{ jenkins_agent_remote_fs | to_json }}
+String labels = {{ jenkins_agent_labels | to_json }}
+String description = {{ jenkins_agent_description | to_json }}
+int executors = {{ jenkins_agent_executors | int }}
+String jobName = {{ jenkins_agent_smoke_job_name | to_json }}
+String jobDescription = {{ jenkins_agent_smoke_job_description | to_json }}
+String pipelineScript = new String(
+    Base64.getDecoder().decode({{ jenkins_agent_smoke_pipeline_definition | b64encode | to_json }}),
+    StandardCharsets.UTF_8
+)
+
+boolean controllerChanged = false
+if (jenkins.getNumExecutors() != 0) {
+    jenkins.setNumExecutors(0)
+    controllerChanged = true
+}
+
+boolean nodeChanged = false
+DumbSlave node = jenkins.getNode(nodeName) as DumbSlave
+
+if (node != null && node.getRemoteFS() != remoteFs) {
+    jenkins.removeNode(node)
+    node = null
+    nodeChanged = true
+}
+
+if (node == null) {
+    node = new DumbSlave(nodeName, remoteFs, new JNLPLauncher())
+    jenkins.addNode(node)
+    nodeChanged = true
+}
+
+if (node.getNodeDescription() != description) {
+    node.setNodeDescription(description)
+    nodeChanged = true
+}
+if (node.getNumExecutors() != executors) {
+    node.setNumExecutors(executors)
+    nodeChanged = true
+}
+if (node.getMode() != Node.Mode.EXCLUSIVE) {
+    node.setMode(Node.Mode.EXCLUSIVE)
+    nodeChanged = true
+}
+if (node.getLabelString() != labels) {
+    node.setLabelString(labels)
+    nodeChanged = true
+}
+if (!(node.getLauncher() instanceof JNLPLauncher)) {
+    node.setLauncher(new JNLPLauncher())
+    nodeChanged = true
+}
+if (!(node.getRetentionStrategy() instanceof RetentionStrategy.Always)) {
+    node.setRetentionStrategy(new RetentionStrategy.Always())
+    nodeChanged = true
+}
+node.save()
+
+boolean jobChanged = false
+WorkflowJob job = jenkins.getItemByFullName(jobName) as WorkflowJob
+if (job == null) {
+    job = jenkins.createProject(WorkflowJob.class, jobName)
+    jobChanged = true
+}
+if (job.getDescription() != jobDescription) {
+    job.setDescription(jobDescription)
+    jobChanged = true
+}
+
+def existingDefinition = job.getDefinition()
+def desiredDefinition = new CpsFlowDefinition(pipelineScript, true)
+if (!(existingDefinition instanceof CpsFlowDefinition)
+        || existingDefinition.getScript() != pipelineScript
+        || !existingDefinition.isSandbox()) {
+    job.setDefinition(desiredDefinition)
+    jobChanged = true
+}
+job.save()
+jenkins.save()
+
+String secret = JnlpAgentReceiver.DATABASE.getSecretOf(nodeName)
+if (secret == null || secret.trim().isEmpty()) {
+    throw new IllegalStateException("Unable to obtain inbound agent secret for " + nodeName)
+}
+
+println("CONTROLLER_CHANGED=" + controllerChanged)
+println("NODE_CHANGED=" + nodeChanged)
+println("JOB_CHANGED=" + jobChanged)
+println("JENKINS_AGENT_SECRET=" + secret)
+println("JENKINS_SMOKE_JOB=" + job.fullName)

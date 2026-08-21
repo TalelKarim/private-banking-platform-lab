@@ -891,24 +891,25 @@ jenkins-agent-01
 
 Configurer avec Ansible :
 
-- Java 21 ;
+- Java 21 JDK ;
 - Git ;
 - Maven ;
+- SDK .NET ;
 - utilisateur et répertoires de travail Jenkins ;
 - prérequis Jenkins Remoting / connexion agent ;
-- accès SSH strictement nécessaire ;
-- labels Jenkins, par exemple `java-maven`.
+- accès SSH strictement nécessaire pour l’administration Ansible ;
+- labels Jenkins, par exemple `lab-worker`, `java-maven` et `dotnet`.
 
 Le flux controller/worker doit utiliser le réseau privé OpenStack :
 
 ```text
 Jenkins Controller
 10.10.0.20
-      │
-      │ Jenkins Remoting / SSH
-      ▼
+      ▲
+      │ Jenkins Remoting WebSocket
+      │ initié par le worker sur le réseau privé
 Jenkins Agent
-10.10.0.x
+10.10.0.30
 ```
 
 Tester le worker avec un code Java volontairement minimaliste, uniquement pour valider l’infrastructure Jenkins avant de commencer les vraies applications :
@@ -931,6 +932,7 @@ Valider que :
 - Java et Maven fonctionnent ;
 - le controller reçoit les logs du worker ;
 - le JAR est archivé par Jenkins ;
+- le worker peut également exécuter un smoke test .NET minimal pour préparer le futur Risk Engine ;
 - la configuration du worker est rejouable via Terraform + Ansible ;
 - le worker est intégré à `make configure-lab` afin de ne pas ajouter une commande manuelle au rebuild quotidien.
 

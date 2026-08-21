@@ -253,3 +253,26 @@ variable "edge_gateway_source_cidr" {
     error_message = "edge_gateway_source_cidr must be a valid IPv4 CIDR."
   }
 }
+
+variable "jenkins_worker_instance_name" {
+  description = "Name of the dedicated Jenkins build worker VM"
+  type        = string
+  default     = "jenkins-agent-01"
+}
+
+variable "jenkins_worker_fixed_ip" {
+  description = "Stable private IPv4 assigned to the Jenkins build worker"
+  type        = string
+  default     = "10.10.0.30"
+
+  validation {
+    condition     = can(cidrnetmask("${var.jenkins_worker_fixed_ip}/32"))
+    error_message = "jenkins_worker_fixed_ip must be a valid IPv4 address."
+  }
+}
+
+variable "jenkins_worker_security_group_name" {
+  description = "Name of the Jenkins worker security group"
+  type        = string
+  default     = "jenkins-worker"
+}
