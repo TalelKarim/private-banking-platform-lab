@@ -103,10 +103,15 @@ resource "aws_route" "openstack_external_via_lab_host" {
 # Application traffic from the dedicated edge is allowed to cross the lab-host
 # only on explicit backend ports. The lab-host remains a router, not a proxy.
 resource "aws_vpc_security_group_ingress_rule" "openstack_backend_from_edge" {
-  for_each = var.edge_backend_tcp_ports
-  security_group_id            = aws_security_group.lab.id
-  referenced_security_group_id = aws_security_group.edge_gateway.id
-  description = "OpenStack backend TCP/${each.value} transit from the edge gateway"
+  for_each = {
+    for port in var.edge_backend_tcp_ports :
+    tostring(port) => port
+  }
+  security_group_id = aws_security_group.lab.id
+  # This is routed/middlebox traffic. Use the edge private IP explicitly rather
+  # than a security-group reference so the source match remains unambiguous.
+  cidr_ipv4   = "${var.edge_gateway_private_ip}/32"
+  description = "OpenStack backend TCP/${each.value} transit from the edge gateway private IP"
   ip_protocol = "tcp"
   from_port   = each.value
   to_port     = each.value

@@ -35,5 +35,5 @@ resource "aws_ssm_parameter" "lab_ssh_private_key" {
   description = "Private SSH key for Terraform-managed AWS lab instances"
   type        = "SecureString"
   value       = tls_private_key.lab.private_key_pem
-  tags = { Name = "${var.project_name}-lab-ssh-private-key" }
+  tags        = { Name = "${var.project_name}-lab-ssh-private-key" }
 }
