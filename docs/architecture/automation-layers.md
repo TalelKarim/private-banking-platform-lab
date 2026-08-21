@@ -2,40 +2,43 @@
 
 ```text
 Terraform AWS
-  -> OpenStack EC2 host, EBS, IAM, Security Groups, Spot, nested virtualization
-  -> dedicated ops-runner EC2 for Terraform/OpenStack and later Ansible execution
-  -> VPC route 192.168.250.0/24 -> lab-host ENI for workload floating-IP administration
+  -> lab-host: nested OpenStack host, storage, IAM, Security Groups and routing
+  -> ops-runner: HCP Terraform Agent + administration tooling
+  -> edge-gateway: Elastic IP + HTTP/HTTPS/SSH perimeter
 
 Minimal cloud-init
-  -> OpenStack host: Python, Git, Make, SSM/SSH readiness, persistent /data mount
-  -> ops runner: Terraform CLI, Ansible CLI, OpenStack CLI and administration workspace
-  -> ops runner retrieves the workload SSH private key from SSM SecureString at boot
+  -> lab-host: boot readiness and persistent /data mount
+  -> ops-runner: Terraform/Ansible/OpenStack CLI, EC2 Instance Connect, HCP agent,
+     SSM-backed SSH material and project repository checkout
+  -> edge-gateway: hostname, SSH/SSM/Python bootstrap only
 
-Project Ansible
-  -> KVM host prerequisites, kernel/network settings, os-host <-> os-ext veth,
-     outbound NAT, routed SSH forwarding to floating IPs, Cinder LVM,
-     Kolla-Ansible installation/config
+Project Ansible - OpenStack host layer
+  -> KVM prerequisites, kernel/network settings, os-host <-> os-ext veth,
+     outbound NAT, routed forwarding, Cinder LVM and Kolla configuration
 
 Kolla-Ansible
-  -> Docker bootstrap, prechecks, OpenStack container deployment, post-deploy
+  -> Docker bootstrap, prechecks, OpenStack container deployment and post-deploy
 
-Terraform OpenStack (HCP Terraform Agent execution on the ops runner)
-  -> tenant networks, router, reusable images/flavors and explicit VM ports
-  -> persistent platform VMs, floating IP associations and Cinder data volumes
-  -> Git/VCS triggers runs in HCP Terraform
-  -> HCP Terraform stores state/run history while the EC2 ops runner executes plan/apply
+Terraform OpenStack (HCP Terraform Agent on ops-runner)
+  -> provider/private networks, router, security groups, images and flavors
+  -> workload ports, VMs, Floating IPs and Cinder volumes
+  -> dependency ordering so Floating IP workloads wait for the Neutron router path
 
-Ansible workload layer (later executed on the ops runner)
-  -> PostgreSQL, Jenkins, monitoring and later OpenShift node configuration
+Project Ansible - workload layer (executed on ops-runner)
+  -> Jenkins controller + persistent volume
+  -> edge-gateway Nginx routes
+  -> future Jenkins agents, PostgreSQL, monitoring and OpenShift nodes
+
+Configuration orchestrator
+  -> make configure-lab
+  -> discovers runtime addresses
+  -> converges all current workload/edge Ansible playbooks in the required order
 ```
 
-The separation is intentional: every layer owns one type of state and can be
-rerun without duplicating the responsibility of another layer. The ops runner is
-an administration client of OpenStack; it does not host OpenStack services or
-nested OpenStack virtual machines.
+The separation is intentional: every layer owns one type of state and can be rerun without duplicating another layer's responsibility.
+
+`ops-runner` is the administration/convergence plane. It does not host OpenStack services, Jenkins workloads or application data. `edge-gateway` is the HTTP/HTTPS ingress plane and does not run build jobs. `lab-host` is the nested infrastructure host and transit path, not an application ingress.
 
 ## Persistent data ownership rule
 
-Cloud-init mounts `/data` but never recursively changes its ownership. Docker and
-OpenStack keep service-specific ownership under the persistent volume across EC2
-replacement; only operator-owned directories are assigned to `ubuntu`.
+Cloud-init mounts `/data` but never recursively changes its ownership. Docker and OpenStack keep service-specific ownership under the persistent volume across EC2 replacement; only operator-owned directories are assigned to `ubuntu`.

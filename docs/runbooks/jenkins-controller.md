@@ -65,7 +65,13 @@ The lab-host is not replaced by its user-data change. Its current hostname is co
 
 ## Sync the repository to the ops-runner
 
-Use the normal Git workflow so the exact committed automation reaches `/home/ubuntu/workspace` (or another checkout) on the ops-runner. Do not copy private keys into the repository.
+The `ops-runner` cloud-init clones the project automatically to:
+
+```text
+/home/ubuntu/workspace/private-banking-platform-lab
+```
+
+Use normal `git pull` operations only when you need to refresh an already-running runner after pushing new automation. Do not copy private keys into the repository.
 
 Validate the runner bootstrap:
 
@@ -87,24 +93,20 @@ Expected key mode:
 -rw-------
 ```
 
-## Obtain the current Jenkins Floating IP
+## Discover and configure Jenkins
 
-Read the `jenkins_controller.floating_ip` output from the OpenStack Terraform workspace / HCP Terraform run output.
-
-Example:
-
-```text
-192.168.250.123
-```
-
-The address is passed at runtime instead of being committed to inventory, so recreating the Floating IP does not require a Git change.
-
-## Configure Jenkins
-
-From the repository checkout on the ops-runner:
+For the normal daily rebuild, do not look up or copy the Jenkins Floating IP manually. From the repository checkout on `ops-runner`, run:
 
 ```bash
-make configure-jenkins JENKINS_FLOATING_IP=192.168.250.123
+make configure-lab
+```
+
+The orchestrator discovers the current Jenkins Floating IP through `lab-host`, then passes it to the Jenkins and edge-gateway configuration wrappers.
+
+For Jenkins-only troubleshooting, the lower-level target is still available:
+
+```bash
+make configure-jenkins JENKINS_FLOATING_IP=192.168.250.x
 ```
 
 The wrapper first runs `ansible.builtin.ping`. Only if SSH succeeds does it execute `playbooks/configure-jenkins.yml`.
@@ -196,21 +198,15 @@ make configure-jenkins JENKINS_FLOATING_IP=192.168.250.123
 
 The second run must not format the Cinder volume, must preserve Jenkins data, and should report only zero or strictly justified changes.
 
-## Secure browser access for the lab
+## Browser access
 
-Do not broaden the Jenkins Security Group just to reach the UI from the Internet. Use SSH port forwarding through the existing management path.
+The normal browser path is now the dedicated edge gateway:
 
-From the repository root on the operator Mac, use separate identities for the AWS jump host and the OpenStack workload:
-
-```bash
-ssh \
-  -o "ProxyCommand=ssh -i infrastructure/terraform/aws/.keys/private-banking-platform-lab.pem -W %h:%p ubuntu@<OPS_RUNNER_PUBLIC_IP>" \
-  -i "$HOME/.ssh/private-banking-openstack-workloads" \
-  -L 8080:127.0.0.1:8080 \
-  ubuntu@<JENKINS_FLOATING_IP>
+```text
+Browser -> edge-gateway EIP:80 -> Nginx -> Jenkins Floating IP:8080 -> Jenkins
 ```
 
-Keep that SSH session open and browse to `http://127.0.0.1:8080`. This does not require exposing Jenkins port 8080 to the Internet or to the AWS management subnet.
+Use the Terraform output `edge_gateway_http_url` (or the future Jenkins DNS name once Route53/TLS is implemented). Do not expose Jenkins port `8080` directly to the Internet.
 
 The initial administrator username is:
 
