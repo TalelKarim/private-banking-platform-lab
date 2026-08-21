@@ -45,6 +45,10 @@ resource "openstack_networking_router_v2" "lab" {
   admin_state_up      = true
   external_network_id = openstack_networking_network_v2.external.id
   enable_snat         = true
+
+  # The external gateway needs an address from the provider subnet.
+  # Make that ordering explicit so a fresh lab build is deterministic.
+  depends_on = [openstack_networking_subnet_v2.external]
 }
 
 resource "openstack_networking_router_interface_v2" "private" {

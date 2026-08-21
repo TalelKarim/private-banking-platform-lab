@@ -1,6 +1,10 @@
 module "jenkins_controller" {
   source = "./modules/compute-instance"
 
+  # A floating IP can only be associated once Neutron has a complete path
+  # from the private subnet to the external network through the router.
+  depends_on = [openstack_networking_router_interface_v2.private]
+
   name       = var.jenkins_instance_name
   image_id   = openstack_images_image_v2.ubuntu_2404.id
   flavor_id  = openstack_compute_flavor_v2.medium.id
