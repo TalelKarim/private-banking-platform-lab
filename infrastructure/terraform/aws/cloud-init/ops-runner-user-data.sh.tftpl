@@ -329,6 +329,24 @@ install -d \
   -g ubuntu \
   /home/ubuntu/workspace
 
+# Keep the stateless runner immediately usable after every rebuild by cloning
+# the lab repository that contains the Makefile, Ansible and helper scripts.
+LAB_REPOSITORY_URL="https://github.com/TalelKarim/private-banking-platform-lab.git"
+LAB_REPOSITORY_DIR="/home/ubuntu/workspace/private-banking-platform-lab"
+
+if [ -d "$LAB_REPOSITORY_DIR/.git" ]; then
+  sudo -u ubuntu -H git -C "$LAB_REPOSITORY_DIR" pull --ff-only
+elif [ -e "$LAB_REPOSITORY_DIR" ]; then
+  echo "ERROR: $LAB_REPOSITORY_DIR exists but is not a Git repository" >&2
+  exit 1
+else
+  sudo -u ubuntu -H git clone \
+    --branch main \
+    --single-branch \
+    "$LAB_REPOSITORY_URL" \
+    "$LAB_REPOSITORY_DIR"
+fi
+
 # ---------------------------------------------------------------------------
 # MOTD
 # ---------------------------------------------------------------------------
@@ -356,6 +374,7 @@ ansible --version
 openstack --version
 aws --version
 sudo -u ubuntu test -r "$WORKLOAD_SSH_PRIVATE_KEY_PATH"
+sudo -u ubuntu test -d /home/ubuntu/workspace/private-banking-platform-lab/.git
 
 systemctl --no-pager --full status tfc-agent.service
 
