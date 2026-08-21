@@ -13,6 +13,13 @@
   loop_control:
     label: "{{ item.name }}"
 
+- name: Install EC2 Instance Connect support
+  ansible.builtin.apt:
+    name: "{{ edge_instance_connect_package }}"
+    state: present
+    update_cache: true
+  notify: Reload SSH
+
 - name: Install Nginx
   ansible.builtin.apt:
     name: "{{ edge_nginx_package }}"

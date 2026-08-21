@@ -1,4 +1,5 @@
 ---
+edge_instance_connect_package: ec2-instance-connect
 edge_nginx_package: nginx
 edge_nginx_service: nginx
 edge_nginx_sites_available_dir: /etc/nginx/sites-available

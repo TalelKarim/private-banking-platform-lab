@@ -1,11 +1,12 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-jenkins configure-edge-gateway prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-edge-gateway prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
 	  'bootstrap-ansible     Install the local Ansible control environment and configure the host' \
+	  'configure-lab         Discover runtime addresses and converge all lab services from ops-runner' \
 	  'configure-jenkins    Configure and validate the Jenkins controller from the ops-runner' \
 	  'configure-edge-gateway Configure Nginx ingress on the edge gateway from the ops-runner' \
 	  'prepare-openstack     Configure the host, run Kolla bootstrap-servers and prechecks' \
@@ -22,6 +23,9 @@ help:
 
 bootstrap-ansible:
 	./scripts/bootstrap-ansible.sh
+
+configure-lab:
+	./scripts/configure-lab.sh
 
 configure-jenkins:
 	@test -n "$(JENKINS_FLOATING_IP)" || (echo "Usage: make configure-jenkins JENKINS_FLOATING_IP=192.168.250.x" >&2; exit 2)
