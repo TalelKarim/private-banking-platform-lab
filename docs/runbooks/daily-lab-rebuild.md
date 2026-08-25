@@ -12,7 +12,7 @@ The lab is intentionally destroyed when it is not being used to reduce AWS/EBS c
 make configure-lab
 ```
 
-`configure-lab` is the single configuration/convergence entry point. It discovers the Jenkins controller, worker and PostgreSQL Floating IPs, configures the controller, registers and configures the dedicated worker, waits for the worker Remoting channel to be online, configures PostgreSQL on its Cinder-backed data volume, validates database authentication, then configures the edge gateway/Nginx. Future workload playbooks must continue to be added behind this target so the daily operator workflow stays one command.
+`configure-lab` is the single configuration/convergence entry point. It discovers the Jenkins controller, worker and PostgreSQL Floating IPs, configures the controller, registers and configures the dedicated worker, waits for the worker Remoting channel to be online, configures PostgreSQL on its Cinder-backed data volume, installs/enables the logical-backup timer, validates database authentication, then configures the edge gateway/Nginx. Future workload playbooks must continue to be added behind this target so the daily operator workflow stays one command.
 
 ## Expected operator workflow
 

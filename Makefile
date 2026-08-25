@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql configure-edge-gateway prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
@@ -10,7 +10,11 @@ help:
 	  'configure-jenkins    Configure and validate the Jenkins controller from the ops-runner' \
 	  'configure-jenkins-worker Configure/register the dedicated Jenkins build worker' \
 	  'test-jenkins-worker Run the Java/.NET smoke pipeline on the dedicated Jenkins worker' \
-	  'configure-postgresql Configure PostgreSQL, Cinder data, roles and database' \
+	  'configure-postgresql Configure PostgreSQL, Cinder data, roles, database and backup timer' \
+	  'backup-postgresql    Create an on-demand PostgreSQL logical dump' \
+	  'list-postgresql-backups List retained PostgreSQL dump archives' \
+	  'test-postgresql-restore Restore a fresh dump into a temporary DB and validate it' \
+	  'restore-postgresql   Restore BACKUP into TARGET_DB; live DB requires explicit CONFIRM' \
 	  'configure-edge-gateway Configure Nginx ingress on the edge gateway from the ops-runner' \
 	  'prepare-openstack     Configure the host, run Kolla bootstrap-servers and prechecks' \
 	  'deploy-openstack      Pull images, deploy OpenStack and generate admin credentials' \
@@ -45,6 +49,18 @@ test-jenkins-worker:
 configure-postgresql:
 	@test -n "$(POSTGRESQL_FLOATING_IP)" || (echo "Usage: make configure-postgresql POSTGRESQL_FLOATING_IP=192.168.250.x" >&2; exit 2)
 	./scripts/configure-postgresql.sh "$(POSTGRESQL_FLOATING_IP)"
+
+backup-postgresql:
+	POSTGRESQL_FLOATING_IP="$(POSTGRESQL_FLOATING_IP)" ./scripts/postgresql-backup.sh backup
+
+list-postgresql-backups:
+	POSTGRESQL_FLOATING_IP="$(POSTGRESQL_FLOATING_IP)" ./scripts/postgresql-backup.sh list
+
+test-postgresql-restore:
+	POSTGRESQL_FLOATING_IP="$(POSTGRESQL_FLOATING_IP)" BACKUP="$(BACKUP)" ./scripts/postgresql-backup.sh test-restore
+
+restore-postgresql:
+	POSTGRESQL_FLOATING_IP="$(POSTGRESQL_FLOATING_IP)" BACKUP="$(BACKUP)" TARGET_DB="$(TARGET_DB)" CONFIRM="$(CONFIRM)" ./scripts/postgresql-backup.sh restore
 
 configure-edge-gateway:
 	@test -n "$(JENKINS_FLOATING_IP)" || (echo "Usage: make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x" >&2; exit 2)

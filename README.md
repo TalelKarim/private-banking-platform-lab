@@ -27,7 +27,7 @@ The lab is built as separate provisioning, configuration and platform layers.
 - `jenkins-controller` is provisioned on `10.10.0.20` with a dedicated persistent Cinder data volume for `JENKINS_HOME`.
 - Ansible installs and configures Jenkins LTS on Java 21, bootstraps the administrator from SSM, disables anonymous access and installs the baseline plugins.
 - `edge-gateway` exposes the web ingress through its AWS Elastic IP; Ansible installs Nginx and proxies Jenkins traffic to its OpenStack Floating IP.
-- `make configure-lab`, executed from `ops-runner`, is the single convergence entry point for the configuration layer. It discovers the Jenkins controller, worker and PostgreSQL Floating IPs, converges both Jenkins nodes, configures the Cinder-backed PostgreSQL service, verifies the database baseline, and then converges the edge gateway.
+- `make configure-lab`, executed from `ops-runner`, is the single convergence entry point for the configuration layer. It discovers the Jenkins controller, worker and PostgreSQL Floating IPs, converges both Jenkins nodes, configures the Cinder-backed PostgreSQL service plus its logical-backup timer, verifies the database baseline, and then converges the edge gateway.
 
 ## Daily rebuild workflow
 
@@ -78,6 +78,10 @@ make configure-jenkins-worker \
   JENKINS_WORKER_FLOATING_IP=192.168.250.y
 make test-jenkins-worker
 make configure-postgresql POSTGRESQL_FLOATING_IP=192.168.250.z
+make backup-postgresql
+make list-postgresql-backups
+make test-postgresql-restore
+make restore-postgresql BACKUP=latest TARGET_DB=portfolio_restore_manual
 make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x
 ```
 
@@ -127,5 +131,6 @@ See `docs/roadmap.md` for the complete fixed A-to-Z plan.
 - Jenkins worker: `docs/runbooks/jenkins-worker.md`
 - PostgreSQL infrastructure: `docs/runbooks/postgresql-infrastructure.md`
 - PostgreSQL configuration: `docs/runbooks/postgresql-configuration.md`
+- PostgreSQL backup/restore: `docs/runbooks/postgresql-backup-restore.md`
 - Edge gateway: `docs/runbooks/edge-gateway.md`
 - OpenStack workload access: `docs/runbooks/openstack-workload-access.md`

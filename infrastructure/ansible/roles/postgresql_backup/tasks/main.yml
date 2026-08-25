@@ -1,0 +1,149 @@
+---
+- name: Validate PostgreSQL backup role inputs
+  ansible.builtin.assert:
+    that:
+      - postgresql_database_name is match('^[a-z][a-z0-9_]*$')
+      - postgresql_owner_role is match('^[a-z][a-z0-9_]*$')
+      - postgresql_app_schema is match('^[a-z][a-z0-9_]*$')
+      - postgresql_backup_directory is string
+      - postgresql_backup_directory.startswith(postgresql_data_mount_point + '/')
+      - postgresql_backup_retention_days | int >= 1
+      - postgresql_backup_compression_level | int >= 0
+      - postgresql_backup_compression_level | int <= 9
+      - postgresql_backup_randomized_delay_seconds | int >= 0
+    fail_msg: >-
+      PostgreSQL backup inputs are invalid. Backups must live below the
+      Cinder-backed PostgreSQL mount and retention/compression values must be sane.
+
+- name: Verify the PostgreSQL data Cinder mount exists before storing backups
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/findmnt
+      - --mountpoint
+      - "{{ postgresql_data_mount_point }}"
+  changed_when: false
+
+- name: Ensure PostgreSQL backup directory exists on persistent storage
+  ansible.builtin.file:
+    path: "{{ postgresql_backup_directory }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+
+- name: Install PostgreSQL logical backup command
+  ansible.builtin.template:
+    src: postgresql-backup.sh.j2
+    dest: "{{ postgresql_backup_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install PostgreSQL controlled restore command
+  ansible.builtin.template:
+    src: postgresql-restore.sh.j2
+    dest: "{{ postgresql_restore_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install PostgreSQL restore-test command
+  ansible.builtin.template:
+    src: postgresql-test-restore.sh.j2
+    dest: "{{ postgresql_restore_test_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install PostgreSQL backup systemd service
+  ansible.builtin.template:
+    src: private-banking-postgresql-backup.service.j2
+    dest: "/etc/systemd/system/{{ postgresql_backup_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  register: postgresql_backup_service_unit
+
+- name: Install PostgreSQL backup systemd timer
+  ansible.builtin.template:
+    src: private-banking-postgresql-backup.timer.j2
+    dest: "/etc/systemd/system/{{ postgresql_backup_service_name }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  register: postgresql_backup_timer_unit
+
+- name: Reload systemd when PostgreSQL backup units changed
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: postgresql_backup_service_unit.changed or postgresql_backup_timer_unit.changed
+
+- name: Enable and start the PostgreSQL backup timer
+  ansible.builtin.systemd_service:
+    name: "{{ postgresql_backup_service_name }}.timer"
+    enabled: true
+    state: started
+
+- name: Look for an existing PostgreSQL logical backup
+  ansible.builtin.shell: |
+    set -euo pipefail
+    find {{ postgresql_backup_directory | quote }} -maxdepth 1 -type f \
+      -name '{{ postgresql_database_name }}_*.dump' -printf '%f\n' | sort | tail -n1
+  args:
+    executable: /bin/bash
+  become_user: postgres
+  register: postgresql_existing_backup
+  changed_when: false
+
+- name: Create the first PostgreSQL backup when persistent storage is empty
+  ansible.builtin.command:
+    argv:
+      - "{{ postgresql_backup_script_path }}"
+  become_user: postgres
+  register: postgresql_initial_backup
+  changed_when: true
+  when: postgresql_existing_backup.stdout | length == 0
+
+- name: Select the latest PostgreSQL backup after bootstrap
+  ansible.builtin.shell: |
+    set -euo pipefail
+    find {{ postgresql_backup_directory | quote }} -maxdepth 1 -type f \
+      -name '{{ postgresql_database_name }}_*.dump' -printf '%f\n' | sort | tail -n1
+  args:
+    executable: /bin/bash
+  become_user: postgres
+  register: postgresql_latest_backup
+  changed_when: false
+
+- name: Assert at least one PostgreSQL backup exists
+  ansible.builtin.assert:
+    that:
+      - postgresql_latest_backup.stdout | length > 0
+    fail_msg: "PostgreSQL backup configuration completed but no dump archive exists."
+
+- name: Verify the latest custom-format backup is readable by pg_restore
+  ansible.builtin.command:
+    argv:
+      - "/usr/lib/postgresql/{{ postgresql_major_version }}/bin/pg_restore"
+      - --list
+      - "{{ postgresql_backup_directory }}/{{ postgresql_latest_backup.stdout }}"
+  become_user: postgres
+  changed_when: false
+
+- name: Verify the PostgreSQL backup timer is active
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - is-active
+      - "{{ postgresql_backup_service_name }}.timer"
+  register: postgresql_backup_timer_active
+  changed_when: false
+
+- name: Report PostgreSQL backup baseline
+  ansible.builtin.debug:
+    msg:
+      - "backup_directory={{ postgresql_backup_directory }} (same persistent Cinder mount as database data)"
+      - "retention_days={{ postgresql_backup_retention_days }}"
+      - "timer={{ postgresql_backup_service_name }}.timer active"
+      - "latest_backup={{ postgresql_latest_backup.stdout }}"
+      - "restore_test=make test-postgresql-restore"

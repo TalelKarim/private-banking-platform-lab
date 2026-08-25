@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DATABASE={{ postgresql_database_name | quote }}
+SCHEMA={{ postgresql_app_schema | quote }}
+BACKUP_DIR={{ postgresql_backup_directory | quote }}
+BACKUP_COMMAND={{ postgresql_backup_script_path | quote }}
+RESTORE_COMMAND={{ postgresql_restore_script_path | quote }}
+PSQL=/usr/bin/psql
+DROPDB=/usr/bin/dropdb
+
+if [[ "$(id -un)" != "postgres" ]]; then
+  echo "Run this command as the Linux postgres user (for example: sudo -u postgres $0)." >&2
+  exit 1
+fi
+
+backup_name=${1:-latest}
+if [[ "$backup_name" == "latest" ]]; then
+  # A restore test should validate a dump of the current state, not compare the
+  # live database with an arbitrarily old archive. Create a fresh dump first.
+  backup_path=$("$BACKUP_COMMAND")
+  backup_name=$(basename "$backup_path")
+fi
+test_database="${DATABASE}_restore_test_$(date -u +'%Y%m%d%H%M%S')_$$"
+
+cleanup() {
+  "$DROPDB" --if-exists --force "$test_database" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+"$RESTORE_COMMAND" "$backup_name" "$test_database"
+
+source_schema_count=$(
+  "$PSQL" --dbname="$DATABASE" --tuples-only --no-align --command \
+    "SELECT count(*) FROM pg_namespace WHERE nspname = '${SCHEMA}';"
+)
+restored_schema_count=$(
+  "$PSQL" --dbname="$test_database" --tuples-only --no-align --command \
+    "SELECT count(*) FROM pg_namespace WHERE nspname = '${SCHEMA}';"
+)
+
+source_relation_count=$(
+  "$PSQL" --dbname="$DATABASE" --tuples-only --no-align --command \
+    "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = '${SCHEMA}' AND c.relkind IN ('r','p','v','m','S');"
+)
+restored_relation_count=$(
+  "$PSQL" --dbname="$test_database" --tuples-only --no-align --command \
+    "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = '${SCHEMA}' AND c.relkind IN ('r','p','v','m','S');"
+)
+
+[[ "$source_schema_count" == "1" ]] || {
+  echo "Source schema '$SCHEMA' does not exist; refusing to call the restore test successful." >&2
+  exit 1
+}
+[[ "$restored_schema_count" == "$source_schema_count" ]] || {
+  echo "Restore test schema validation failed." >&2
+  exit 1
+}
+[[ "$restored_relation_count" == "$source_relation_count" ]] || {
+  echo "Restore test relation-count validation failed: source=$source_relation_count restored=$restored_relation_count" >&2
+  exit 1
+}
+
+printf 'Restore validation: SUCCESS\n'
+printf 'Backup: %s\n' "$backup_name"
+printf 'Temporary database: %s (removed after validation)\n' "$test_database"
+printf 'Schema: %s\n' "$SCHEMA"
+printf 'Schema relations compared: %s\n' "$source_relation_count"

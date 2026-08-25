@@ -113,6 +113,7 @@
     - role: common_linux
     - role: persistent_volume
     - role: postgresql
+    - role: postgresql_backup
 
   post_tasks:
     - name: Verify the Cinder-backed PostgreSQL data mount

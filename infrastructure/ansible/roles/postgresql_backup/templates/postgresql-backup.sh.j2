@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+umask 077
+
+DATABASE={{ postgresql_database_name | quote }}
+BACKUP_DIR={{ postgresql_backup_directory | quote }}
+RETENTION_DAYS={{ postgresql_backup_retention_days | int }}
+COMPRESSION_LEVEL={{ postgresql_backup_compression_level | int }}
+PG_DUMP=/usr/lib/postgresql/{{ postgresql_major_version }}/bin/pg_dump
+PG_RESTORE=/usr/lib/postgresql/{{ postgresql_major_version }}/bin/pg_restore
+
+if [[ "$(id -un)" != "postgres" ]]; then
+  echo "Run this command as the Linux postgres user (for example: sudo -u postgres $0)." >&2
+  exit 1
+fi
+
+mkdir -p "$BACKUP_DIR"
+chmod 0700 "$BACKUP_DIR"
+
+timestamp=$(date -u +'%Y%m%dT%H%M%SZ')
+final="$BACKUP_DIR/${DATABASE}_${timestamp}.dump"
+temporary="${final}.tmp"
+checksum="${final}.sha256"
+
+cleanup() {
+  rm -f "$temporary"
+}
+trap cleanup EXIT
+
+"$PG_DUMP" \
+  --dbname="$DATABASE" \
+  --format=custom \
+  -Z "$COMPRESSION_LEVEL" \
+  --file="$temporary"
+
+# Validate the archive structure before publishing it as a completed backup.
+"$PG_RESTORE" --list "$temporary" >/dev/null
+mv "$temporary" "$final"
+(cd "$BACKUP_DIR" && sha256sum "$(basename "$final")") > "$checksum.tmp"
+mv "$checksum.tmp" "$checksum"
+
+# Retention is applied only after a new valid dump has been created.
+find "$BACKUP_DIR" -maxdepth 1 -type f \
+  \( -name "${DATABASE}_*.dump" -o -name "${DATABASE}_*.dump.sha256" \) \
+  -mmin "+$((RETENTION_DAYS * 1440))" -delete
+
+printf '%s\n' "$final"

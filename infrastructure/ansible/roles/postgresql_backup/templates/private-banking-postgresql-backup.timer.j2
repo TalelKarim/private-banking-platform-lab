@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule Private Banking Lab PostgreSQL logical backups
+
+[Timer]
+OnCalendar={{ postgresql_backup_schedule }}
+Persistent=true
+RandomizedDelaySec={{ postgresql_backup_randomized_delay_seconds }}
+Unit={{ postgresql_backup_service_name }}.service
+
+[Install]
+WantedBy=timers.target

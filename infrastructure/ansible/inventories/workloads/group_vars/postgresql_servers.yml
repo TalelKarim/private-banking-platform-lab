@@ -24,3 +24,13 @@ postgresql_app_schema: portfolio
 # The value is created/read at runtime by the playbook and never committed.
 postgresql_app_password_ssm_parameter_name: /private-banking-platform-lab/postgresql/portfolio-app-password
 postgresql_app_password_aws_region: eu-south-2
+
+# Step 22 logical-backup baseline. Dumps live outside the PostgreSQL cluster
+# directory but on the same persistent Cinder filesystem, so they survive a
+# disposable Nova root/VM replacement. External/off-host backup storage is a
+# later hardening concern, not hidden inside this lab baseline.
+postgresql_backup_directory: /var/lib/postgresql/backups
+postgresql_backup_retention_days: 7
+postgresql_backup_schedule: "*-*-* 02:15:00"
+postgresql_backup_randomized_delay_seconds: 300
+postgresql_backup_compression_level: 6

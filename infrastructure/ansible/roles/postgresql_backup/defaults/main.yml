@@ -1,0 +1,11 @@
+---
+postgresql_backup_directory: "{{ postgresql_data_mount_point }}/backups"
+postgresql_backup_retention_days: 7
+postgresql_backup_schedule: "*-*-* 02:15:00"
+postgresql_backup_randomized_delay_seconds: 300
+postgresql_backup_compression_level: 6
+
+postgresql_backup_service_name: private-banking-postgresql-backup
+postgresql_backup_script_path: /usr/local/sbin/private-banking-postgresql-backup
+postgresql_restore_script_path: /usr/local/sbin/private-banking-postgresql-restore
+postgresql_restore_test_script_path: /usr/local/sbin/private-banking-postgresql-test-restore
