@@ -1,0 +1,19 @@
+# Managed by Ansible - private-banking-platform-lab
+# Keep only lab-owned overrides here; Ubuntu/PostgreSQL package defaults remain
+# in the main postgresql.conf.
+
+listen_addresses = '127.0.0.1,{{ postgresql_private_ip }}'
+port = {{ postgresql_port }}
+password_encryption = 'scram-sha-256'
+
+# Step 21 logging baseline. Slow statements are logged without turning on full
+# statement logging, which would be unnecessarily noisy for the lab.
+logging_collector = on
+log_directory = '{{ postgresql_log_directory }}'
+log_filename = 'postgresql-%Y-%m-%d.log'
+log_rotation_age = 1d
+log_truncate_on_rotation = on
+log_connections = on
+log_disconnections = on
+log_min_duration_statement = {{ postgresql_log_min_duration_statement_ms }}
+log_line_prefix = '%m [%p] %q%u@%d '

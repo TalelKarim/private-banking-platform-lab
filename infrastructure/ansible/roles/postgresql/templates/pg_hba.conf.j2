@@ -1,0 +1,15 @@
+# Managed by Ansible - private-banking-platform-lab
+# TYPE  DATABASE           USER                    ADDRESS                 METHOD
+
+# Local administration stays on Unix sockets with peer authentication.
+local   all                postgres                                        peer
+local   all                all                                             peer
+
+# Local TCP is password-authenticated as well; no trust/md5 fallback.
+host    all                all                     127.0.0.1/32            scram-sha-256
+host    all                all                     ::1/128                 scram-sha-256
+
+# Application traffic is deliberately narrow: one database/user pair and only
+# from the private OpenStack network. Neutron SGs provide the outer network
+# boundary; pg_hba.conf is the database-side boundary.
+host    {{ postgresql_database_name }} {{ postgresql_app_user }} {{ postgresql_private_cidr }} scram-sha-256

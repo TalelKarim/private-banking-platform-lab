@@ -27,7 +27,7 @@ The lab is built as separate provisioning, configuration and platform layers.
 - `jenkins-controller` is provisioned on `10.10.0.20` with a dedicated persistent Cinder data volume for `JENKINS_HOME`.
 - Ansible installs and configures Jenkins LTS on Java 21, bootstraps the administrator from SSM, disables anonymous access and installs the baseline plugins.
 - `edge-gateway` exposes the web ingress through its AWS Elastic IP; Ansible installs Nginx and proxies Jenkins traffic to its OpenStack Floating IP.
-- `make configure-lab`, executed from `ops-runner`, is the single convergence entry point for the configuration layer. It discovers the Jenkins controller and worker Floating IPs, converges both Jenkins nodes, verifies the worker Remoting channel, and then converges the edge gateway.
+- `make configure-lab`, executed from `ops-runner`, is the single convergence entry point for the configuration layer. It discovers the Jenkins controller, worker and PostgreSQL Floating IPs, converges both Jenkins nodes, configures the Cinder-backed PostgreSQL service, verifies the database baseline, and then converges the edge gateway.
 
 ## Daily rebuild workflow
 
@@ -42,7 +42,7 @@ The normal lab rebuild is intentionally reduced to three operator actions:
 
 3. On ops-runner:
    make configure-lab
-   -> Jenkins controller + worker + Nginx convergence
+   -> Jenkins controller + worker + PostgreSQL + Nginx convergence
 ```
 
 See `docs/runbooks/daily-lab-rebuild.md` for the exact procedure.
@@ -77,6 +77,7 @@ make configure-jenkins-worker \
   JENKINS_FLOATING_IP=192.168.250.x \
   JENKINS_WORKER_FLOATING_IP=192.168.250.y
 make test-jenkins-worker
+make configure-postgresql POSTGRESQL_FLOATING_IP=192.168.250.z
 make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x
 ```
 
@@ -125,5 +126,6 @@ See `docs/roadmap.md` for the complete fixed A-to-Z plan.
 - Jenkins controller: `docs/runbooks/jenkins-controller.md`
 - Jenkins worker: `docs/runbooks/jenkins-worker.md`
 - PostgreSQL infrastructure: `docs/runbooks/postgresql-infrastructure.md`
+- PostgreSQL configuration: `docs/runbooks/postgresql-configuration.md`
 - Edge gateway: `docs/runbooks/edge-gateway.md`
 - OpenStack workload access: `docs/runbooks/openstack-workload-access.md`

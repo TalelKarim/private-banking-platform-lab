@@ -12,7 +12,7 @@ The lab is intentionally destroyed when it is not being used to reduce AWS/EBS c
 make configure-lab
 ```
 
-`configure-lab` is the single configuration/convergence entry point. It discovers the Jenkins controller and worker Floating IPs, configures the controller, registers and configures the dedicated worker, waits for the worker Remoting channel to be online, then configures the edge gateway/Nginx. Future workload playbooks must continue to be added behind this target so the daily operator workflow stays one command.
+`configure-lab` is the single configuration/convergence entry point. It discovers the Jenkins controller, worker and PostgreSQL Floating IPs, configures the controller, registers and configures the dedicated worker, waits for the worker Remoting channel to be online, configures PostgreSQL on its Cinder-backed data volume, validates database authentication, then configures the edge gateway/Nginx. Future workload playbooks must continue to be added behind this target so the daily operator workflow stays one command.
 
 ## Expected operator workflow
 
@@ -56,7 +56,8 @@ For troubleshooting only, automatic discovery can be bypassed:
 ```bash
 make configure-lab \
   JENKINS_FLOATING_IP=192.168.250.123 \
-  JENKINS_WORKER_FLOATING_IP=192.168.250.124
+  JENKINS_WORKER_FLOATING_IP=192.168.250.124 \
+  POSTGRESQL_FLOATING_IP=192.168.250.125
 ```
 
 ## Success criteria
@@ -66,10 +67,12 @@ A successful daily rebuild ends with:
 ```text
 Jenkins controller       READY
 Jenkins worker           ONLINE
+PostgreSQL               READY
 Edge gateway             READY
 Controller FIP           192.168.250.x
 Worker FIP               192.168.250.y
+PostgreSQL FIP           192.168.250.z
 LAB CONFIGURATION READY
 ```
 
-At that point Jenkins must be reachable through the edge gateway, the controller service must be active, and `jenkins-agent-01` must be online. Use `make test-jenkins-worker` when you want to execute the Java/.NET infrastructure smoke pipeline.
+At that point Jenkins must be reachable through the edge gateway, the controller service must be active, `jenkins-agent-01` must be online, and PostgreSQL must be serving the `portfolio` database from its Cinder-backed data directory. Use `make test-jenkins-worker` when you want to execute the Java/.NET infrastructure smoke pipeline.

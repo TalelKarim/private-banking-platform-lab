@@ -1,0 +1,26 @@
+---
+common_linux_hostname: postgresql
+
+# The Cinder volume is mounted before PostgreSQL is installed. This guarantees
+# that the package-created cluster is initialized directly on persistent block
+# storage rather than first writing database state to the disposable Nova root.
+persistent_volume_label: postgresql-data
+persistent_volume_mount_point: /var/lib/postgresql
+persistent_volume_filesystem: ext4
+persistent_volume_mount_options: defaults,nofail,x-systemd.device-timeout=30
+
+postgresql_private_ip: 10.10.0.40
+postgresql_private_cidr: 10.10.0.0/24
+postgresql_data_mount_point: /var/lib/postgresql
+postgresql_major_version: 16
+postgresql_cluster_name: main
+postgresql_port: 5432
+
+postgresql_database_name: portfolio
+postgresql_owner_role: portfolio_owner
+postgresql_app_user: portfolio_app
+postgresql_app_schema: portfolio
+
+# The value is created/read at runtime by the playbook and never committed.
+postgresql_app_password_ssm_parameter_name: /private-banking-platform-lab/postgresql/portfolio-app-password
+postgresql_app_password_aws_region: eu-south-2

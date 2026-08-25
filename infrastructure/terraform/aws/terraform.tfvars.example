@@ -22,6 +22,11 @@ openstack_external_network_cidr = "192.168.250.0/24"
 # The matching private key is stored outside Terraform as an SSM SecureString.
 workload_ssh_private_key_ssm_parameter_name = "/private-banking-platform-lab/openstack/workload-ssh-private-key"
 
+# PostgreSQL application password path. The value is generated once by Ansible
+# on first configuration and stored as a SecureString; Terraform only grants
+# the ops-runner least-privilege access to this exact parameter.
+postgresql_app_password_ssm_parameter_name = "/private-banking-platform-lab/postgresql/portfolio-app-password"
+
 # Dedicated ingress node. Its stable VPC /32 is trusted by lab-host forwarding
 # and OpenStack workload security groups.
 edge_gateway_instance_type    = "t3.micro"

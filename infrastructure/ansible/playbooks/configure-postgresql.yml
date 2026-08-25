@@ -1,0 +1,188 @@
+---
+- name: Configure PostgreSQL
+  hosts: postgresql_servers
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    - name: Read the PostgreSQL application password from SSM on the ops-runner
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/aws
+          - ssm
+          - get-parameter
+          - --region
+          - "{{ postgresql_app_password_aws_region }}"
+          - --name
+          - "{{ postgresql_app_password_ssm_parameter_name }}"
+          - --with-decryption
+          - --query
+          - Parameter.Value
+          - --output
+          - text
+      delegate_to: localhost
+      become: false
+      register: postgresql_app_password_lookup
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Reject SSM lookup failures other than a missing first-run secret
+      ansible.builtin.assert:
+        that:
+          - >-
+            postgresql_app_password_lookup.rc == 0
+            or 'ParameterNotFound' in (postgresql_app_password_lookup.stderr | default(''))
+        fail_msg: >-
+          Unable to read the PostgreSQL password from SSM. Apply the AWS
+          Terraform changes first so ops-runner has access to the configured
+          parameter path.
+      no_log: true
+
+    - name: Generate the PostgreSQL application password on first configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - >-
+            import secrets,string;
+            alphabet=string.ascii_letters+string.digits;
+            print(''.join(secrets.choice(alphabet) for _ in range(40)))
+      delegate_to: localhost
+      become: false
+      register: postgresql_generated_password
+      changed_when: false
+      when: postgresql_app_password_lookup.rc != 0
+      no_log: true
+
+    - name: Persist a missing PostgreSQL password without exposing it in process arguments
+      when: postgresql_app_password_lookup.rc != 0
+      no_log: true
+      block:
+        - name: Write a runtime-only SSM request document on the ops-runner
+          ansible.builtin.copy:
+            content: |
+              {
+                "Name": "{{ postgresql_app_password_ssm_parameter_name }}",
+                "Description": "Private banking lab PostgreSQL portfolio application password",
+                "Type": "SecureString",
+                "Value": "{{ postgresql_generated_password.stdout }}"
+              }
+            dest: /tmp/private-banking-postgresql-ssm-put.json
+            owner: ubuntu
+            group: ubuntu
+            mode: "0600"
+          delegate_to: localhost
+          become: false
+
+        - name: Create the PostgreSQL SecureString parameter
+          ansible.builtin.command:
+            argv:
+              - /usr/local/bin/aws
+              - ssm
+              - put-parameter
+              - --region
+              - "{{ postgresql_app_password_aws_region }}"
+              - --cli-input-json
+              - file:///tmp/private-banking-postgresql-ssm-put.json
+          delegate_to: localhost
+          become: false
+          register: postgresql_app_password_create
+          changed_when: postgresql_app_password_create.rc == 0
+
+      always:
+        - name: Remove the runtime-only SSM request document
+          ansible.builtin.file:
+            path: /tmp/private-banking-postgresql-ssm-put.json
+            state: absent
+          delegate_to: localhost
+          become: false
+          no_log: true
+
+    - name: Hold the PostgreSQL application password only in Ansible memory
+      ansible.builtin.set_fact:
+        postgresql_app_password: >-
+          {{
+            postgresql_app_password_lookup.stdout
+            if postgresql_app_password_lookup.rc == 0
+            else postgresql_generated_password.stdout
+          }}
+      no_log: true
+
+  roles:
+    - role: common_linux
+    - role: persistent_volume
+    - role: postgresql
+
+  post_tasks:
+    - name: Verify the Cinder-backed PostgreSQL data mount
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/findmnt
+          - --target
+          - "{{ postgresql_data_mount_point }}"
+      register: postgresql_mount_validation
+      changed_when: false
+
+    - name: Verify PostgreSQL reports the expected Cinder-backed data directory
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/sudo
+          - -u
+          - postgres
+          - /usr/bin/psql
+          - -Atqc
+          - SHOW data_directory;
+      register: postgresql_data_directory_validation
+      changed_when: false
+
+    - name: Assert PostgreSQL data lives under the persistent mount
+      ansible.builtin.assert:
+        that:
+          - postgresql_data_directory_validation.stdout == postgresql_data_directory
+        fail_msg: >-
+          PostgreSQL data_directory is not the expected Cinder-backed path.
+          Refusing to consider the database ready.
+
+    - name: Verify PostgreSQL listens on its private OpenStack address
+      ansible.builtin.command:
+        argv:
+          - "/usr/lib/postgresql/{{ postgresql_major_version }}/bin/pg_isready"
+          - -h
+          - "{{ postgresql_private_ip }}"
+          - -p
+          - "{{ postgresql_port | string }}"
+          - -d
+          - "{{ postgresql_database_name }}"
+      register: postgresql_private_ready
+      changed_when: false
+
+    - name: Verify SCRAM application authentication over the private interface
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/psql
+          - -h
+          - "{{ postgresql_private_ip }}"
+          - -p
+          - "{{ postgresql_port | string }}"
+          - -U
+          - "{{ postgresql_app_user }}"
+          - -d
+          - "{{ postgresql_database_name }}"
+          - -Atqc
+          - SELECT current_user || ':' || current_database();
+      environment:
+        PGPASSWORD: "{{ postgresql_app_password }}"
+      register: postgresql_application_login_validation
+      changed_when: false
+      no_log: true
+
+    - name: Report the PostgreSQL validation summary
+      ansible.builtin.debug:
+        msg:
+          - "hostname={{ ansible_hostname }}"
+          - "data_mount={{ postgresql_data_mount_point }} (Cinder mounted)"
+          - "data_directory={{ postgresql_data_directory_validation.stdout }}"
+          - "listen={{ postgresql_private_ip }}:{{ postgresql_port }}"
+          - "database={{ postgresql_database_name }}"
+          - "application_role={{ postgresql_app_user }} (SCRAM authentication OK)"

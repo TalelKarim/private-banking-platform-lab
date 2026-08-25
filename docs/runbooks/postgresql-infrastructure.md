@@ -130,3 +130,6 @@ lsblk
 At this stage the Cinder disk must be visible but must **not** be formatted or
 mounted manually. Step 21 will reuse the existing `persistent_volume` Ansible
 role so filesystem creation and mounting remain idempotent and automated.
+
+Step 21 implementation and validation are documented in
+`docs/runbooks/postgresql-configuration.md`.

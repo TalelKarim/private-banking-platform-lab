@@ -1,0 +1,191 @@
+---
+- name: Validate PostgreSQL role inputs
+  ansible.builtin.assert:
+    that:
+      - postgresql_major_version | int >= 16
+      - postgresql_port | int >= 1
+      - postgresql_port | int <= 65535
+      - postgresql_private_ip is string
+      - postgresql_private_cidr is string
+      - postgresql_data_mount_point is string
+      - postgresql_data_mount_point | length > 1
+      - postgresql_database_name is match('^[a-z][a-z0-9_]*$')
+      - postgresql_owner_role is match('^[a-z][a-z0-9_]*$')
+      - postgresql_app_user is match('^[a-z][a-z0-9_]*$')
+      - postgresql_app_schema is match('^[a-z][a-z0-9_]*$')
+      - postgresql_app_password is string
+      - postgresql_app_password | length >= 32
+    fail_msg: >-
+      PostgreSQL inputs are invalid. The application password must be an
+      SSM-backed secret of at least 32 characters and database identifiers must
+      use lowercase letters, digits and underscores only.
+  no_log: true
+
+- name: Verify PostgreSQL data root is backed by the Cinder mount before package installation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/findmnt
+      - --mountpoint
+      - "{{ postgresql_data_mount_point }}"
+  register: postgresql_cinder_mount
+  changed_when: false
+
+- name: Install PostgreSQL and Ansible database dependencies
+  ansible.builtin.apt:
+    name: "{{ postgresql_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure PostgreSQL configuration drop-in directory exists
+  ansible.builtin.file:
+    path: "{{ postgresql_config_directory }}/conf.d"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+
+- name: Ensure PostgreSQL log directory exists
+  ansible.builtin.file:
+    path: "{{ postgresql_log_directory }}"
+    state: directory
+    owner: root
+    group: postgres
+    mode: "1775"
+
+- name: Ensure the packaged PostgreSQL configuration includes conf.d
+  ansible.builtin.lineinfile:
+    path: "{{ postgresql_config_directory }}/postgresql.conf"
+    regexp: '^\s*#?\s*include_dir\s*='
+    line: "include_dir = 'conf.d'"
+    insertafter: EOF
+    state: present
+  notify: Restart PostgreSQL
+
+- name: Install private banking PostgreSQL configuration overrides
+  ansible.builtin.template:
+    src: 99-private-banking-lab.conf.j2
+    dest: "{{ postgresql_config_directory }}/conf.d/99-private-banking-lab.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Restart PostgreSQL
+
+- name: Install the managed PostgreSQL host-based authentication policy
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "{{ postgresql_config_directory }}/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Restart PostgreSQL
+
+- name: Keep the PostgreSQL cluster in automatic startup mode
+  ansible.builtin.copy:
+    content: "auto\n"
+    dest: "{{ postgresql_config_directory }}/start.conf"
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  notify: Restart PostgreSQL
+
+- name: Apply PostgreSQL configuration before creating database identities
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure the PostgreSQL service is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ postgresql_service_name }}"
+    enabled: true
+    state: started
+
+- name: Wait for the local PostgreSQL socket to accept connections
+  ansible.builtin.command:
+    argv:
+      - "/usr/lib/postgresql/{{ postgresql_major_version }}/bin/pg_isready"
+      - -h
+      - /var/run/postgresql
+      - -p
+      - "{{ postgresql_port | string }}"
+  register: postgresql_local_ready
+  changed_when: false
+  retries: 30
+  delay: 2
+  until: postgresql_local_ready.rc == 0
+
+- name: Create database roles, database and permissions
+  become_user: postgres
+  block:
+    - name: Create the NOLOGIN database owner role
+      community.postgresql.postgresql_user:
+        name: "{{ postgresql_owner_role }}"
+        role_attr_flags: NOLOGIN
+        state: present
+        login_unix_socket: /var/run/postgresql
+        login_port: "{{ postgresql_port }}"
+      environment:
+        PGOPTIONS: "-c password_encryption=scram-sha-256"
+
+    - name: Create the application login role with SCRAM authentication
+      community.postgresql.postgresql_user:
+        name: "{{ postgresql_app_user }}"
+        password: "{{ postgresql_app_password }}"
+        encrypted: true
+        expires: infinity
+        role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB,NOCREATEROLE,INHERIT
+        state: present
+        login_unix_socket: /var/run/postgresql
+        login_port: "{{ postgresql_port }}"
+      environment:
+        PGOPTIONS: "-c password_encryption=scram-sha-256"
+      no_log: true
+
+    - name: Create the application database owned by the owner role
+      community.postgresql.postgresql_db:
+        name: "{{ postgresql_database_name }}"
+        owner: "{{ postgresql_owner_role }}"
+        encoding: UTF8
+        state: present
+        login_unix_socket: /var/run/postgresql
+        login_port: "{{ postgresql_port }}"
+
+    - name: Create the application schema owned by the owner role
+      community.postgresql.postgresql_schema:
+        login_db: "{{ postgresql_database_name }}"
+        name: "{{ postgresql_app_schema }}"
+        owner: "{{ postgresql_owner_role }}"
+        state: present
+        login_unix_socket: /var/run/postgresql
+        login_port: "{{ postgresql_port }}"
+
+    - name: Revoke implicit database CONNECT from PUBLIC
+      community.postgresql.postgresql_privs:
+        login_db: postgres
+        type: database
+        objs: "{{ postgresql_database_name }}"
+        roles: PUBLIC
+        privs: CONNECT
+        state: absent
+        login_unix_socket: /var/run/postgresql
+        login_port: "{{ postgresql_port }}"
+
+    - name: Grant application user CONNECT to its database
+      community.postgresql.postgresql_privs:
+        login_db: postgres
+        type: database
+        objs: "{{ postgresql_database_name }}"
+        roles: "{{ postgresql_app_user }}"
+        privs: CONNECT
+        state: present
+        login_unix_socket: /var/run/postgresql
+        login_port: "{{ postgresql_port }}"
+
+    - name: Grant application user access to its schema
+      community.postgresql.postgresql_privs:
+        login_db: "{{ postgresql_database_name }}"
+        type: schema
+        objs: "{{ postgresql_app_schema }}"
+        roles: "{{ postgresql_app_user }}"
+        privs: USAGE,CREATE
+        state: present
+        login_unix_socket: /var/run/postgresql
+        login_port: "{{ postgresql_port }}"

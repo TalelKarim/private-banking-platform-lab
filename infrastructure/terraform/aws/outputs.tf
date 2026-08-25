@@ -166,6 +166,11 @@ output "ops_runner_workload_ssh_key_parameter_name" {
   value       = var.workload_ssh_private_key_ssm_parameter_name
 }
 
+output "postgresql_app_password_parameter_name" {
+  description = "SSM SecureString path used by Ansible for the PostgreSQL portfolio application password"
+  value       = var.postgresql_app_password_ssm_parameter_name
+}
+
 output "edge_gateway_instance_id" {
   description = "EC2 instance ID of the HTTP/HTTPS edge gateway"
   value       = aws_instance.edge_gateway.id
