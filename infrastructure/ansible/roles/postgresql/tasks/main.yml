@@ -30,6 +30,13 @@
   register: postgresql_cinder_mount
   changed_when: false
 
+- name: Install POSIX ACL support required for Ansible PostgreSQL privilege escalation
+  ansible.builtin.apt:
+    name: acl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
 - name: Install PostgreSQL and Ansible database dependencies
   ansible.builtin.apt:
     name: "{{ postgresql_packages }}"
