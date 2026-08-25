@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Do not inherit an inaccessible caller working directory (for example
+# /home/ubuntu when invoked through sudo -u postgres over SSH).
+cd /
+
 umask 077
 
 DATABASE={{ postgresql_database_name | quote }}

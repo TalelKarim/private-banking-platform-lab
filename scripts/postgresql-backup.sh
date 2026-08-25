@@ -82,17 +82,17 @@ case "$ACTION" in
   backup)
     printf 'Creating PostgreSQL logical backup on persistent Cinder storage...\n'
     ssh "${SSH_OPTS[@]}" "$REMOTE" \
-      'sudo -u postgres /usr/local/sbin/private-banking-postgresql-backup'
+      'cd / && sudo -u postgres /usr/local/sbin/private-banking-postgresql-backup'
     ;;
   list)
     printf 'Retained PostgreSQL backups:\n'
     ssh "${SSH_OPTS[@]}" "$REMOTE" \
-      "sudo -u postgres find /var/lib/postgresql/backups -maxdepth 1 -type f -name 'portfolio_*.dump' -printf '%f\\n' | sort"
+      "cd / && sudo -u postgres find /var/lib/postgresql/backups -maxdepth 1 -type f -name 'portfolio_*.dump' -printf '%f\\n' | sort"
     ;;
   test-restore)
     printf 'Restoring %s into an isolated temporary database and validating it...\n' "$BACKUP"
     ssh "${SSH_OPTS[@]}" "$REMOTE" \
-      "sudo -u postgres /usr/local/sbin/private-banking-postgresql-test-restore '$BACKUP'"
+      "cd / && sudo -u postgres /usr/local/sbin/private-banking-postgresql-test-restore '$BACKUP'"
     ;;
   restore)
     if [[ "$TARGET_DB" == "portfolio" && "$CONFIRM" != "RESTORE_portfolio" ]]; then
@@ -101,6 +101,6 @@ case "$ACTION" in
     fi
     printf 'Restoring %s into PostgreSQL database %s...\n' "$BACKUP" "$TARGET_DB"
     ssh "${SSH_OPTS[@]}" "$REMOTE" \
-      "sudo -u postgres /usr/local/sbin/private-banking-postgresql-restore '$BACKUP' '$TARGET_DB' '$CONFIRM'"
+      "cd / && sudo -u postgres /usr/local/sbin/private-banking-postgresql-restore '$BACKUP' '$TARGET_DB' '$CONFIRM'"
     ;;
 esac

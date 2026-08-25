@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Do not inherit an inaccessible caller working directory (for example
+# /home/ubuntu when invoked through sudo -u postgres over SSH).
+cd /
+
 DATABASE={{ postgresql_database_name | quote }}
 SCHEMA={{ postgresql_app_schema | quote }}
 BACKUP_DIR={{ postgresql_backup_directory | quote }}
