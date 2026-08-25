@@ -103,3 +103,16 @@ output "jenkins_worker" {
     port_id     = module.jenkins_worker.port_id
   }
 }
+
+output "postgresql" {
+  description = "PostgreSQL platform VM, management address and persistent Cinder volume"
+  value = {
+    instance_id      = module.postgresql.instance_id
+    name             = module.postgresql.instance_name
+    fixed_ip         = module.postgresql.fixed_ip
+    floating_ip      = module.postgresql.floating_ip
+    port_id          = module.postgresql.port_id
+    data_volume_id   = module.postgresql.data_volume_id
+    data_volume_path = module.postgresql.data_volume_device
+  }
+}

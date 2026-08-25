@@ -276,3 +276,37 @@ variable "jenkins_worker_security_group_name" {
   type        = string
   default     = "jenkins-worker"
 }
+
+variable "postgresql_instance_name" {
+  description = "Name of the PostgreSQL platform VM"
+  type        = string
+  default     = "postgresql"
+}
+
+variable "postgresql_fixed_ip" {
+  description = "Stable private IPv4 assigned to the PostgreSQL VM"
+  type        = string
+  default     = "10.10.0.40"
+
+  validation {
+    condition     = can(cidrnetmask("${var.postgresql_fixed_ip}/32"))
+    error_message = "postgresql_fixed_ip must be a valid IPv4 address."
+  }
+}
+
+variable "postgresql_data_volume_size_gb" {
+  description = "Persistent Cinder volume size reserved for PostgreSQL data"
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.postgresql_data_volume_size_gb >= 10
+    error_message = "postgresql_data_volume_size_gb must be at least 10 GiB."
+  }
+}
+
+variable "postgresql_security_group_name" {
+  description = "Name of the PostgreSQL application security group"
+  type        = string
+  default     = "postgresql"
+}

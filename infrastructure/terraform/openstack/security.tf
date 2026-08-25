@@ -99,3 +99,25 @@ resource "openstack_networking_secgroup_rule_v2" "jenkins_worker_egress_ipv4" {
   ethertype         = "IPv4"
   security_group_id = openstack_networking_secgroup_v2.jenkins_worker.id
 }
+
+resource "openstack_networking_secgroup_v2" "postgresql" {
+  name                 = var.postgresql_security_group_name
+  description          = "PostgreSQL database traffic from private OpenStack workloads"
+  delete_default_rules = true
+}
+
+resource "openstack_networking_secgroup_rule_v2" "postgresql_private" {
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  protocol          = "tcp"
+  port_range_min    = 5432
+  port_range_max    = 5432
+  remote_ip_prefix  = var.private_network_cidr
+  security_group_id = openstack_networking_secgroup_v2.postgresql.id
+}
+
+resource "openstack_networking_secgroup_rule_v2" "postgresql_egress_ipv4" {
+  direction         = "egress"
+  ethertype         = "IPv4"
+  security_group_id = openstack_networking_secgroup_v2.postgresql.id
+}

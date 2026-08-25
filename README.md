@@ -38,7 +38,7 @@ The normal lab rebuild is intentionally reduced to three operator actions:
    -> lab-host + ops-runner + edge-gateway
 
 2. Terraform OpenStack apply
-   -> networks + router + Jenkins controller/worker + required storage/Floating IPs
+   -> networks + router + Jenkins controller/worker + PostgreSQL VM + required storage/Floating IPs
 
 3. On ops-runner:
    make configure-lab
@@ -124,5 +124,6 @@ See `docs/roadmap.md` for the complete fixed A-to-Z plan.
 - Daily rebuild: `docs/runbooks/daily-lab-rebuild.md`
 - Jenkins controller: `docs/runbooks/jenkins-controller.md`
 - Jenkins worker: `docs/runbooks/jenkins-worker.md`
+- PostgreSQL infrastructure: `docs/runbooks/postgresql-infrastructure.md`
 - Edge gateway: `docs/runbooks/edge-gateway.md`
 - OpenStack workload access: `docs/runbooks/openstack-workload-access.md`
