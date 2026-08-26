@@ -25,6 +25,7 @@ apt-get install -y \
   chrony \
   curl \
   ec2-instance-connect \
+  e2fsprogs \
   git \
   jq \
   make \
@@ -87,6 +88,12 @@ fi
 
 mount -a
 mountpoint -q /data
+
+# Terraform may enlarge the gp3 data volume without recreating its existing
+# ext4 filesystem. Grow the filesystem online to consume the new EBS capacity.
+if [ "$(findmnt -n -o FSTYPE /data)" = "ext4" ]; then
+  resize2fs "$DATA_DEVICE"
+fi
 
 # Never recursively chown /data: it can contain persistent Docker/OpenStack
 # files with service-specific ownership from a previous host lifecycle.

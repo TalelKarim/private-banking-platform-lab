@@ -83,6 +83,27 @@ resource "aws_instance" "lab" {
     }
   }
 
+  # In Golden-AMI mode the AMI already carries /data and Cinder snapshots.
+  # Override those mappings at instance launch so /data can grow beyond the
+  # snapshot size while preserving its filesystem and OpenStack contents.
+  dynamic "ebs_block_device" {
+    for_each = local.use_golden_ami ? local.golden_runtime_block_devices : {}
+
+    content {
+      device_name           = ebs_block_device.key
+      snapshot_id           = ebs_block_device.value.snapshot_id
+      volume_type           = "gp3"
+      volume_size           = local.golden_runtime_volume_sizes[ebs_block_device.key]
+      delete_on_termination = true
+      iops                  = 3000
+      throughput            = 125
+
+      tags = {
+        Name = ebs_block_device.key == "/dev/sdf" ? "${var.project_name}-data" : "${var.project_name}-cinder"
+      }
+    }
+  }
+
   # Bootstrap mode provisions fresh data/Cinder EBS volumes and discovers them
   # from Terraform-known volume IDs. Golden mode restores those EBS volumes
   # from the AMI snapshots, then refreshes their new EC2 volume serials locally.
@@ -107,6 +128,23 @@ resource "aws_instance" "lab" {
     Name = "${var.project_name}-host"
     Role = "OpenStack-All-In-One"
     OS   = "Ubuntu-24.04"
+  }
+
+  lifecycle {
+    precondition {
+      condition = local.use_golden_ami ? (
+        toset(keys(local.golden_runtime_block_devices)) == toset(["/dev/sdf", "/dev/sdg"])
+      ) : true
+      error_message = "Golden AMI must contain exactly the baked /dev/sdf (/data) and /dev/sdg (Cinder) non-root mappings."
+    }
+
+    precondition {
+      condition = local.use_golden_ami ? (
+        var.data_volume_size >= try(local.golden_runtime_block_devices["/dev/sdf"].snapshot_size, 0) &&
+        var.cinder_volume_size >= try(local.golden_runtime_block_devices["/dev/sdg"].snapshot_size, 0)
+      ) : true
+      error_message = "Runtime EBS sizes cannot be smaller than the Golden AMI snapshots."
+    }
   }
 
   depends_on = [

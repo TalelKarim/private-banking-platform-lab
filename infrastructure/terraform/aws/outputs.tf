@@ -8,6 +8,16 @@ output "instance_type" {
   value       = aws_instance.lab.instance_type
 }
 
+output "lab_host_capacity" {
+  description = "Declared durable capacity for the OpenStack/OpenShift lab host"
+  value = {
+    instance_type          = var.instance_type
+    root_volume_size_gib   = var.root_volume_size
+    data_volume_size_gib   = var.data_volume_size
+    cinder_volume_size_gib = var.cinder_volume_size
+  }
+}
+
 output "availability_zone" {
   description = "Availability Zone hosting the EC2 instance"
   value       = aws_instance.lab.availability_zone

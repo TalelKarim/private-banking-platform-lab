@@ -1,3 +1,9 @@
+# OpenShift-capable all-in-one host. The 600 GiB /data volume backs Docker,
+# Glance and Nova root disks; Cinder remains on its dedicated 100 GiB EBS.
+instance_type      = "r8i.4xlarge"
+data_volume_size   = 600
+cinder_volume_size = 100
+
 # Stable address baked into the Kolla/OpenStack control-plane configuration.
 openstack_host_private_ip = "172.31.31.70"
 

@@ -84,3 +84,34 @@ data "aws_ec2_managed_prefix_list" "instance_connect" {
 locals {
   use_golden_ami = var.golden_ami_id != null
 }
+
+data "aws_ami" "golden" {
+  count = local.use_golden_ami ? 1 : 0
+
+  most_recent = false
+  owners      = [data.aws_caller_identity.current.account_id]
+
+  filter {
+    name   = "image-id"
+    values = [var.golden_ami_id]
+  }
+}
+
+locals {
+  # Golden AMIs contain the root disk plus the baked /data and Cinder snapshots.
+  # Re-declare the two non-root mappings at launch so their runtime sizes remain
+  # controlled by Terraform even when the source snapshots were baked smaller.
+  golden_runtime_block_devices = local.use_golden_ami ? {
+    for mapping in data.aws_ami.golden[0].block_device_mappings :
+    mapping.device_name => {
+      snapshot_id   = mapping.ebs["snapshot_id"]
+      snapshot_size = mapping.ebs["volume_size"]
+    }
+    if contains(["/dev/sdf", "/dev/sdg"], mapping.device_name)
+  } : {}
+
+  golden_runtime_volume_sizes = {
+    "/dev/sdf" = var.data_volume_size
+    "/dev/sdg" = var.cinder_volume_size
+  }
+}

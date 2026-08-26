@@ -27,6 +27,13 @@ done
 mountpoint -q /data
 
 DATA_DEVICE=$(readlink -f "$(findmnt -n -o SOURCE /data)")
+
+# The Golden AMI snapshot can be smaller than the runtime EBS volume. AWS grows
+# the block device at launch; grow the preserved ext4 filesystem online too.
+if [ "$(findmnt -n -o FSTYPE /data)" = "ext4" ]; then
+  resize2fs "$DATA_DEVICE"
+fi
+
 DATA_SERIAL=$(lsblk -dn -o SERIAL "$DATA_DEVICE" | awk '{$1=$1};1')
 
 # The Cinder snapshot preserves the LVM PV/VG metadata. Activate it and locate

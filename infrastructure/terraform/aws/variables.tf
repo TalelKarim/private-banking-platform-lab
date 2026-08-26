@@ -19,7 +19,7 @@ variable "environment" {
 variable "instance_type" {
   description = "EC2 instance type used as the virtual datacenter host"
   type        = string
-  default     = "r8i.2xlarge"
+  default     = "r8i.4xlarge"
 }
 
 variable "root_volume_size" {
@@ -34,9 +34,9 @@ variable "root_volume_size" {
 }
 
 variable "data_volume_size" {
-  description = "Persistent data EBS volume size in GiB"
+  description = "Persistent data EBS volume size in GiB for Docker, Kolla, Glance and Nova root disks"
   type        = number
-  default     = 200
+  default     = 600
 
   validation {
     condition     = var.data_volume_size >= 100
