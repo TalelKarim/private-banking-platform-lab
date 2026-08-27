@@ -1,0 +1,169 @@
+---
+- name: Validate canonical OKD topology values
+  ansible.builtin.assert:
+    that:
+      - okd_cluster_name | length > 0
+      - okd_base_domain | length > 0
+      - okd_lb_ip | length > 0
+      - okd_bootstrap.ip | length > 0
+      - okd_control_planes | length == 3
+      - okd_control_planes | map(attribute='name') | unique | list | length == 3
+      - okd_control_planes | map(attribute='ip') | unique | list | length == 3
+      - okd_ignition_http_port | int > 0
+      - okd_ignition_http_port | int < 65536
+    fail_msg: "Invalid OKD cluster configuration in platform/openshift/cluster-config.yml"
+
+- name: Install OKD edge packages
+  ansible.builtin.apt:
+    name: "{{ okd_lb_packages }}"
+    state: present
+    update_cache: true
+
+- name: Create the private OKD DNS configuration directory
+  ansible.builtin.file:
+    path: "{{ okd_lb_dns_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create the runtime Ignition document root
+  ansible.builtin.file:
+    path: "{{ okd_lb_ignition_root }}"
+    state: directory
+    owner: root
+    group: www-data
+    mode: "0750"
+
+- name: Render private OKD DNS configuration
+  ansible.builtin.template:
+    src: dnsmasq.conf.j2
+    dest: "{{ okd_lb_dns_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart OKD DNS safely
+
+- name: Install the dedicated OKD DNS systemd unit
+  ansible.builtin.template:
+    src: okd-dns.service.j2
+    dest: "{{ okd_lb_dns_unit_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart OKD DNS safely
+
+- name: Render OKD HAProxy configuration
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload HAProxy safely
+
+- name: Remove the distribution default Nginx site
+  ansible.builtin.file:
+    path: "{{ okd_lb_nginx_sites_enabled_dir }}/default"
+    state: absent
+  notify: Reload Ignition HTTP safely
+
+- name: Render the private Ignition HTTP endpoint
+  ansible.builtin.template:
+    src: nginx-ignition.conf.j2
+    dest: "{{ okd_lb_nginx_sites_available_dir }}/{{ okd_lb_nginx_site_name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload Ignition HTTP safely
+
+- name: Enable the private Ignition HTTP endpoint
+  ansible.builtin.file:
+    src: "{{ okd_lb_nginx_sites_available_dir }}/{{ okd_lb_nginx_site_name }}.conf"
+    dest: "{{ okd_lb_nginx_sites_enabled_dir }}/{{ okd_lb_nginx_site_name }}.conf"
+    state: link
+  notify: Reload Ignition HTTP safely
+
+- name: Flush service configuration handlers before validation
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure OKD edge services are enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - "{{ okd_lb_dns_service }}"
+    - "{{ okd_lb_haproxy_service }}"
+    - "{{ okd_lb_nginx_service }}"
+
+- name: Wait for HAProxy and the Ignition HTTP listeners
+  ansible.builtin.wait_for:
+    host: "{{ okd_lb_ip }}"
+    port: "{{ item }}"
+    timeout: 10
+  loop:
+    - 80
+    - 443
+    - 6443
+    - 22623
+    - "{{ okd_ignition_http_port }}"
+
+- name: Validate API DNS resolution against okd-lb
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dig
+      - +short
+      - "@{{ okd_lb_ip }}"
+      - "api.{{ okd_cluster_name }}.{{ okd_base_domain }}"
+  register: okd_lb_api_dns
+  changed_when: false
+  failed_when: okd_lb_api_dns.stdout | trim != okd_lb_ip
+
+- name: Validate bootstrap DNS resolution against okd-lb
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dig
+      - +short
+      - "@{{ okd_lb_ip }}"
+      - "{{ okd_bootstrap.name }}.{{ okd_cluster_name }}.{{ okd_base_domain }}"
+  register: okd_lb_bootstrap_dns
+  changed_when: false
+  failed_when: okd_lb_bootstrap_dns.stdout | trim != okd_bootstrap.ip
+
+- name: Validate application wildcard DNS resolution against okd-lb
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dig
+      - +short
+      - "@{{ okd_lb_ip }}"
+      - "smoke.apps.{{ okd_cluster_name }}.{{ okd_base_domain }}"
+  register: okd_lb_apps_dns
+  changed_when: false
+  failed_when: okd_lb_apps_dns.stdout | trim != okd_lb_ip
+
+- name: Validate reverse DNS for compact control-plane nodes
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dig
+      - +short
+      - "@{{ okd_lb_ip }}"
+      - -x
+      - "{{ item.ip }}"
+  loop: "{{ okd_control_planes }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: okd_lb_reverse_dns
+  changed_when: false
+  failed_when: >-
+    (item.name ~ '.' ~ okd_cluster_name ~ '.' ~ okd_base_domain ~ '.')
+    not in (okd_lb_reverse_dns.stdout_lines | default([]))
+
+- name: Validate the private Ignition HTTP endpoint
+  ansible.builtin.uri:
+    url: "http://{{ okd_lb_ip }}:{{ okd_ignition_http_port }}/healthz"
+    status_code: 200
+    return_content: true
+  register: okd_lb_ignition_health
+  changed_when: false
+  failed_when: okd_lb_ignition_health.content | trim != 'ok'

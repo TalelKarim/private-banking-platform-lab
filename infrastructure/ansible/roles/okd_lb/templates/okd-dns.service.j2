@@ -1,0 +1,13 @@
+[Unit]
+Description=Private Banking Lab OKD DNS
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/dnsmasq --no-daemon --conf-file={{ okd_lb_dns_config_path }}
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

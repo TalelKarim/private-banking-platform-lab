@@ -1,0 +1,23 @@
+---
+okd_lb_packages:
+  - dnsmasq-base
+  - dnsutils
+  - haproxy
+  - nginx
+
+okd_lb_dns_service: private-banking-okd-dns.service
+okd_lb_dns_config_dir: /etc/private-banking-okd
+okd_lb_dns_config_path: /etc/private-banking-okd/dnsmasq.conf
+okd_lb_dns_unit_path: /etc/systemd/system/private-banking-okd-dns.service
+
+okd_lb_haproxy_service: haproxy
+okd_lb_nginx_service: nginx
+
+okd_lb_ignition_root: /srv/okd/ignition
+okd_lb_nginx_site_name: okd-ignition
+okd_lb_nginx_sites_available_dir: /etc/nginx/sites-available
+okd_lb_nginx_sites_enabled_dir: /etc/nginx/sites-enabled
+
+okd_lb_dns_upstreams:
+  - 1.1.1.1
+  - 8.8.8.8

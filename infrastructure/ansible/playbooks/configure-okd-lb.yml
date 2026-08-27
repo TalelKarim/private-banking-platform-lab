@@ -1,0 +1,14 @@
+---
+- name: Configure the OKD DNS and load-balancer edge
+  hosts: okd_lbs
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Load the canonical OKD cluster configuration
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../../platform/openshift/cluster-config.yml"
+
+  roles:
+    - role: common_linux
+    - role: okd_lb

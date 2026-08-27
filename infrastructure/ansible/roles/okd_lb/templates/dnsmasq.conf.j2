@@ -1,0 +1,35 @@
+# Managed by Ansible - private-banking-platform-lab
+# Lightweight authoritative/forwarding DNS used before and after OKD bootstrap.
+
+port=53
+listen-address={{ okd_lb_ip }}
+bind-interfaces
+
+# Do not inherit /etc/resolv.conf: okd-lb's own resolver is deliberately kept
+# on public upstreams while dnsmasq serves the OpenShift machine network.
+no-resolv
+{% for upstream in okd_lb_dns_upstreams %}
+server={{ upstream }}
+{% endfor %}
+
+domain-needed
+bogus-priv
+cache-size=1000
+
+# The cluster zone is answered locally. Unknown names in this zone must not be
+# leaked to public resolvers.
+local=/{{ okd_cluster_name }}.{{ okd_base_domain }}/
+
+# Stable API endpoints. The same front-end IP is used for API and API-internal
+# traffic in this lab.
+host-record=api.{{ okd_cluster_name }}.{{ okd_base_domain }},{{ okd_lb_ip }}
+host-record=api-int.{{ okd_cluster_name }}.{{ okd_base_domain }},{{ okd_lb_ip }}
+
+# Application Routes are wildcarded to the ingress front-end.
+address=/apps.{{ okd_cluster_name }}.{{ okd_base_domain }}/{{ okd_lb_ip }}
+
+# Installation/bootstrap and permanent compact control-plane nodes.
+host-record={{ okd_bootstrap.name }}.{{ okd_cluster_name }}.{{ okd_base_domain }},{{ okd_bootstrap.ip }}
+{% for node in okd_control_planes %}
+host-record={{ node.name }}.{{ okd_cluster_name }}.{{ okd_base_domain }},{{ node.ip }}
+{% endfor %}

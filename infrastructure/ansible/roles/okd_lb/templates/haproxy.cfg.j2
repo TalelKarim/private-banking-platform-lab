@@ -1,0 +1,66 @@
+# Managed by Ansible - private-banking-platform-lab
+# Layer-4 front door required by the user-provisioned OKD installation.
+
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    chroot /var/lib/haproxy
+    stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd listeners
+    stats timeout 30s
+    user haproxy
+    group haproxy
+    daemon
+
+    # The OKD API uses installation-generated certificates. HAProxy only uses
+    # TLS for the /readyz health probe and does not terminate client traffic.
+    ssl-server-verify none
+
+defaults
+    log global
+    mode tcp
+    option tcplog
+    option dontlognull
+    timeout connect 10s
+    timeout client 1m
+    timeout server 1m
+    timeout check 10s
+
+listen okd-api-6443
+    bind {{ okd_lb_ip }}:6443
+    mode tcp
+    balance roundrobin
+    option httpchk
+    http-check connect ssl
+    http-check send meth GET uri /readyz ver HTTP/1.1 hdr Host api.{{ okd_cluster_name }}.{{ okd_base_domain }}
+    http-check expect status 200
+    server {{ okd_bootstrap.name }} {{ okd_bootstrap.ip }}:6443 check inter 5s fall 3 rise 2 backup
+{% for node in okd_control_planes %}
+    server {{ node.name }} {{ node.ip }}:6443 check inter 5s fall 3 rise 2
+{% endfor %}
+
+listen okd-machine-config-22623
+    bind {{ okd_lb_ip }}:22623
+    mode tcp
+    balance roundrobin
+    server {{ okd_bootstrap.name }} {{ okd_bootstrap.ip }}:22623 check inter 5s fall 3 rise 2 backup
+{% for node in okd_control_planes %}
+    server {{ node.name }} {{ node.ip }}:22623 check inter 5s fall 3 rise 2
+{% endfor %}
+
+# In a three-node compact cluster there are no dedicated compute nodes, so the
+# Ingress Controller runs on the control-plane nodes themselves.
+listen okd-ingress-443
+    bind {{ okd_lb_ip }}:443
+    mode tcp
+    balance source
+{% for node in okd_control_planes %}
+    server {{ node.name }} {{ node.ip }}:443 check inter 5s fall 3 rise 2
+{% endfor %}
+
+listen okd-ingress-80
+    bind {{ okd_lb_ip }}:80
+    mode tcp
+    balance source
+{% for node in okd_control_planes %}
+    server {{ node.name }} {{ node.ip }}:80 check inter 5s fall 3 rise 2
+{% endfor %}

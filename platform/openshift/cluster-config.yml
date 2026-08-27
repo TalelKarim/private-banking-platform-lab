@@ -1,0 +1,25 @@
+---
+# Single source of truth for the user-provisioned compact OKD cluster.
+# Terraform owns the OpenStack infrastructure; Ansible and the future
+# openshift-install orchestration consume these stable logical values.
+okd_cluster_name: okd
+okd_base_domain: lab.test
+
+okd_machine_network_cidr: 10.20.0.0/24
+okd_pod_network_cidr: 10.128.0.0/14
+okd_service_network_cidr: 172.30.0.0/16
+
+okd_lb_ip: 10.20.0.10
+okd_ignition_http_port: 8080
+
+okd_bootstrap:
+  name: bootstrap
+  ip: 10.20.0.11
+
+okd_control_planes:
+  - name: okd-01
+    ip: 10.20.0.21
+  - name: okd-02
+    ip: 10.20.0.22
+  - name: okd-03
+    ip: 10.20.0.23

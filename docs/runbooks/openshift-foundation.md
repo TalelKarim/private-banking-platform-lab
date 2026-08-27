@@ -157,3 +157,99 @@ Ansible role okd_lb
 
 Only after that layer is validated will the bootstrap and compact control-plane
 VMs be created.
+
+## OKD edge configuration layer
+
+After the Terraform foundation exists, `make configure-lab` now discovers the
+runtime Floating IP of `okd-lb` and converges it with Ansible. The fixed service
+IP remains `10.20.0.10`; the Floating IP is management-only and may change on
+every daily rebuild.
+
+The canonical logical cluster values live in:
+
+```text
+platform/openshift/cluster-config.yml
+```
+
+This keeps the DNS/LB configuration and the future installer/bootstrap
+orchestration aligned on the same names and fixed addresses.
+
+Ansible configures three services on `okd-lb`:
+
+```text
+dnsmasq-base via private-banking-okd-dns.service
+  53/udp + 53/tcp
+  api.okd.lab.test       -> 10.20.0.10
+  api-int.okd.lab.test   -> 10.20.0.10
+  *.apps.okd.lab.test    -> 10.20.0.10
+  bootstrap.okd.lab.test -> 10.20.0.11
+  okd-01.okd.lab.test    -> 10.20.0.21
+  okd-02.okd.lab.test    -> 10.20.0.22
+  okd-03.okd.lab.test    -> 10.20.0.23
+
+HAProxy
+  6443  -> bootstrap + three control planes (Kubernetes API)
+  22623 -> bootstrap + three control planes (Machine Config Server)
+  443   -> three control planes (compact-cluster HTTPS ingress)
+  80    -> three control planes (compact-cluster HTTP ingress)
+
+Nginx
+  8080  -> private runtime Ignition document root
+```
+
+The HAProxy backends are intentionally DOWN before bootstrap/control-plane VMs
+exist. That is expected. This phase validates the front-end listeners and DNS;
+the backends become healthy only during the next installation phase.
+
+The future bootstrap removal workflow will also remove the bootstrap backend
+from ports 6443 and 22623 after `bootstrap-complete`.
+
+### Daily rebuild experience
+
+The operator workflow stays simple:
+
+```text
+Terraform AWS apply
+  -> Terraform OpenStack apply
+     -> make configure-lab
+        -> discover okd-lb FIP
+        -> Ansible installs/configures dnsmasq + HAProxy + Nginx
+        -> validate DNS + listeners + Ignition health endpoint
+```
+
+A direct one-service retry is also available:
+
+```bash
+make configure-okd-lb OKD_LB_FLOATING_IP=192.168.250.x
+```
+
+Normally this override is not needed because `make configure-lab` discovers the
+Floating IP automatically.
+
+### Validation on okd-lb
+
+```bash
+sudo systemctl status private-banking-okd-dns haproxy nginx --no-pager
+sudo ss -lntup | grep -E ':(53|80|443|6443|22623|8080)\\b'
+
+dig @10.20.0.10 api.okd.lab.test +short
+dig @10.20.0.10 api-int.okd.lab.test +short
+dig @10.20.0.10 smoke.apps.okd.lab.test +short
+dig @10.20.0.10 bootstrap.okd.lab.test +short
+dig @10.20.0.10 okd-01.okd.lab.test +short
+dig @10.20.0.10 -x 10.20.0.21 +short
+
+curl -fsS http://10.20.0.10:8080/healthz
+sudo haproxy -c -f /etc/haproxy/haproxy.cfg
+sudo dnsmasq --test --conf-file=/etc/private-banking-okd/dnsmasq.conf
+sudo nginx -t
+```
+
+Expected DNS results:
+
+```text
+api/api-int/wildcard apps -> 10.20.0.10
+bootstrap                 -> 10.20.0.11
+okd-01                    -> 10.20.0.21
+reverse 10.20.0.21        -> okd-01.okd.lab.test.
+```

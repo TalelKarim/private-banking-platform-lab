@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
@@ -16,6 +16,7 @@ help:
 	  'test-postgresql-restore Restore a fresh dump into a temporary DB and validate it' \
 	  'restore-postgresql   Restore BACKUP into TARGET_DB; live DB requires explicit CONFIRM' \
 	  'configure-edge-gateway Configure Nginx ingress on the edge gateway from the ops-runner' \
+	  'configure-okd-lb      Configure OKD DNS, HAProxy and Ignition HTTP on okd-lb' \
 	  'prepare-openstack     Configure the host, run Kolla bootstrap-servers and prechecks' \
 	  'deploy-openstack      Pull images, deploy OpenStack and generate admin credentials' \
 	  'openstack-up          Run the complete prepare + deploy + validate chain' \
@@ -65,6 +66,10 @@ restore-postgresql:
 configure-edge-gateway:
 	@test -n "$(JENKINS_FLOATING_IP)" || (echo "Usage: make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x" >&2; exit 2)
 	./scripts/configure-edge-gateway.sh "$(JENKINS_FLOATING_IP)"
+
+configure-okd-lb:
+	@test -n "$(OKD_LB_FLOATING_IP)" || (echo "Usage: make configure-okd-lb OKD_LB_FLOATING_IP=192.168.250.x" >&2; exit 2)
+	./scripts/configure-okd-lb.sh "$(OKD_LB_FLOATING_IP)"
 
 prepare-openstack: bootstrap-ansible
 	./scripts/kolla.sh prepare

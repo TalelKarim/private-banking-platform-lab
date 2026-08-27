@@ -1,0 +1,45 @@
+---
+- name: Reload systemd units for OKD DNS
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  listen: Restart OKD DNS safely
+
+- name: Validate OKD dnsmasq configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/dnsmasq
+      - --test
+      - "--conf-file={{ okd_lb_dns_config_path }}"
+  changed_when: false
+  listen: Restart OKD DNS safely
+
+- name: Restart OKD DNS
+  ansible.builtin.systemd_service:
+    name: "{{ okd_lb_dns_service }}"
+    state: restarted
+  listen: Restart OKD DNS safely
+
+# Nginx must release its package-default :80 listener before HAProxy claims it.
+- name: Validate Nginx configuration
+  ansible.builtin.command:
+    argv: [/usr/sbin/nginx, -t]
+  changed_when: false
+  listen: Reload Ignition HTTP safely
+
+- name: Reload Nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: restarted
+  listen: Reload Ignition HTTP safely
+
+- name: Validate HAProxy configuration
+  ansible.builtin.command:
+    argv: [/usr/sbin/haproxy, -c, -f, /etc/haproxy/haproxy.cfg]
+  changed_when: false
+  listen: Reload HAProxy safely
+
+- name: Reload HAProxy
+  ansible.builtin.systemd_service:
+    name: haproxy
+    state: restarted
+  listen: Reload HAProxy safely
