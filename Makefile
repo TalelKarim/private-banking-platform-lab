@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
@@ -17,6 +17,9 @@ help:
 	  'restore-postgresql   Restore BACKUP into TARGET_DB; live DB requires explicit CONFIRM' \
 	  'configure-edge-gateway Configure Nginx ingress on the edge gateway from the ops-runner' \
 	  'configure-okd-lb      Configure OKD DNS, HAProxy and Ignition HTTP on okd-lb' \
+	  'prepare-okd-toolchain Install the pinned openshift-install, oc and kubectl on ops-runner' \
+	  'prepare-okd-image     Import the installer-matched SCOS OpenStack image into Glance' \
+	  'prepare-okd-installation-prereqs Prepare OKD tools + matching Glance boot image' \
 	  'prepare-openstack     Configure the host, run Kolla bootstrap-servers and prechecks' \
 	  'deploy-openstack      Pull images, deploy OpenStack and generate admin credentials' \
 	  'openstack-up          Run the complete prepare + deploy + validate chain' \
@@ -70,6 +73,15 @@ configure-edge-gateway:
 configure-okd-lb:
 	@test -n "$(OKD_LB_FLOATING_IP)" || (echo "Usage: make configure-okd-lb OKD_LB_FLOATING_IP=192.168.250.x" >&2; exit 2)
 	./scripts/configure-okd-lb.sh "$(OKD_LB_FLOATING_IP)"
+
+prepare-okd-toolchain:
+	./scripts/prepare-okd-toolchain.sh
+
+prepare-okd-image: prepare-okd-toolchain
+	./scripts/prepare-okd-image.sh
+
+prepare-okd-installation-prereqs:
+	./scripts/prepare-okd-installation-prereqs.sh
 
 prepare-openstack: bootstrap-ansible
 	./scripts/kolla.sh prepare

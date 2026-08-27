@@ -253,3 +253,21 @@ bootstrap                 -> 10.20.0.11
 okd-01                    -> 10.20.0.21
 reverse 10.20.0.21        -> okd-01.okd.lab.test.
 ```
+
+## Pinned installer and machine-OS prerequisite layer
+
+After the DNS/LB edge has converged, the lab now prepares the installer-side
+prerequisites automatically with:
+
+```bash
+make prepare-okd-installation-prereqs
+```
+
+The pinned release lives in `platform/openshift/cluster-config.yml`. The
+matching `openshift-install`, `oc`, `kubectl` binaries are installed on
+`ops-runner`, and the installer's own CoreOS stream metadata is used to import
+the matching CentOS Stream CoreOS OpenStack QCOW2 image into Glance.
+
+No bootstrap/control-plane VM is created in this layer. See
+`docs/runbooks/openshift-installer-prerequisites.md` for the lifecycle and daily
+rebuild behavior.

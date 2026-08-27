@@ -5,6 +5,11 @@
 okd_cluster_name: okd
 okd_base_domain: lab.test
 
+# Pin one stable OKD release so every daily rebuild uses the same installer,
+# client tools and matching CentOS Stream CoreOS boot image.
+okd_release_version: 4.22.0-okd-scos.8
+okd_architecture: x86_64
+
 okd_machine_network_cidr: 10.20.0.0/24
 okd_pod_network_cidr: 10.128.0.0/14
 okd_service_network_cidr: 172.30.0.0/16
