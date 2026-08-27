@@ -112,3 +112,93 @@ module "postgresql" {
     "platform",
   ]
 }
+
+
+# Permanent infrastructure entry point for the OKD cluster. It is declared
+# explicitly rather than through the generic workload module because this VM
+# needs a tiny first-boot DNS override before Ansible owns its configuration.
+resource "openstack_networking_port_v2" "okd_lb" {
+  name           = "${var.okd_lb_instance_name}-port"
+  description    = "Primary OpenShift machine-network port for ${var.okd_lb_instance_name}"
+  network_id     = openstack_networking_network_v2.openshift.id
+  admin_state_up = true
+
+  security_group_ids = [
+    openstack_networking_secgroup_v2.management.id,
+    openstack_networking_secgroup_v2.okd_lb.id,
+  ]
+
+  fixed_ip {
+    subnet_id  = openstack_networking_subnet_v2.openshift.id
+    ip_address = var.okd_lb_fixed_ip
+  }
+
+  tags = [
+    "lab",
+    "okd",
+    "openshift",
+    "load-balancer",
+    "dns",
+    "platform",
+  ]
+}
+
+resource "openstack_compute_instance_v2" "okd_lb" {
+  depends_on = [openstack_networking_router_interface_v2.openshift]
+
+  name                = var.okd_lb_instance_name
+  image_id            = openstack_images_image_v2.ubuntu_2404.id
+  flavor_id           = openstack_compute_flavor_v2.small.id
+  key_pair            = openstack_compute_keypair_v2.workload.name
+  stop_before_destroy = true
+
+  # openshift-subnet advertises okd-lb itself as DNS so future CoreOS nodes
+  # resolve private cluster records from first boot. This VM therefore pins
+  # its own resolver to public upstreams until Ansible installs the DNS service.
+  user_data = <<-CLOUD_CONFIG
+    #cloud-config
+    write_files:
+      - path: /etc/systemd/resolved.conf.d/99-okd-lb-upstream.conf
+        permissions: '0644'
+        content: |
+          [Resolve]
+          DNS=1.1.1.1
+          FallbackDNS=8.8.8.8
+          Domains=~.
+    runcmd:
+      - systemctl restart systemd-resolved
+  CLOUD_CONFIG
+
+  metadata = {
+    environment = "lab"
+    role        = "okd-load-balancer-dns"
+    managed_by  = "terraform"
+  }
+
+  tags = [
+    "lab",
+    "okd",
+    "openshift",
+    "load-balancer",
+    "dns",
+    "platform",
+  ]
+
+  network {
+    port = openstack_networking_port_v2.okd_lb.id
+  }
+}
+
+resource "openstack_networking_floatingip_v2" "okd_lb" {
+  pool        = openstack_networking_network_v2.external.name
+  subnet_id   = openstack_networking_subnet_v2.external.id
+  port_id     = openstack_networking_port_v2.okd_lb.id
+  description = "Management floating IP for ${var.okd_lb_instance_name}"
+
+  tags = [
+    "lab",
+    "okd",
+    "openshift",
+    "management",
+  ]
+}

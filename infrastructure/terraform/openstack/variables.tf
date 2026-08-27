@@ -310,3 +310,109 @@ variable "postgresql_security_group_name" {
   type        = string
   default     = "postgresql"
 }
+
+variable "openshift_network_name" {
+  description = "Name of the dedicated OpenStack tenant network used by OKD/OpenShift machines"
+  type        = string
+  default     = "openshift-net"
+}
+
+variable "openshift_subnet_name" {
+  description = "Name of the dedicated subnet used by OKD/OpenShift machines"
+  type        = string
+  default     = "openshift-subnet"
+}
+
+variable "openshift_machine_network_cidr" {
+  description = "Machine network CIDR assigned to OpenShift infrastructure VMs"
+  type        = string
+  default     = "10.20.0.0/24"
+
+  validation {
+    condition     = can(cidrnetmask(var.openshift_machine_network_cidr))
+    error_message = "openshift_machine_network_cidr must be a valid IPv4 CIDR."
+  }
+}
+
+variable "openshift_gateway_ip" {
+  description = "Neutron router gateway on the OpenShift machine subnet"
+  type        = string
+  default     = "10.20.0.1"
+
+  validation {
+    condition     = can(cidrnetmask("${var.openshift_gateway_ip}/32"))
+    error_message = "openshift_gateway_ip must be a valid IPv4 address."
+  }
+}
+
+variable "openshift_allocation_pool_start" {
+  description = "First DHCP-allocatable address on openshift-subnet; lower addresses stay reserved for fixed infrastructure IPs"
+  type        = string
+  default     = "10.20.0.100"
+}
+
+variable "openshift_allocation_pool_end" {
+  description = "Last DHCP-allocatable address on openshift-subnet"
+  type        = string
+  default     = "10.20.0.199"
+}
+
+
+variable "okd_control_flavor_name" {
+  description = "Nova flavor used by compact OKD control-plane/worker nodes and the temporary bootstrap machine"
+  type        = string
+  default     = "okd.control"
+}
+
+variable "okd_control_flavor_ram_mb" {
+  description = "RAM in MiB assigned to the compact OKD node flavor"
+  type        = number
+  default     = 16384
+}
+
+variable "okd_control_flavor_vcpus" {
+  description = "vCPU count assigned to the compact OKD node flavor"
+  type        = number
+  default     = 4
+}
+
+variable "okd_control_flavor_disk_gb" {
+  description = "Nova root disk size in GiB assigned to the compact OKD node flavor"
+  type        = number
+  default     = 100
+}
+
+variable "openshift_node_security_group_name" {
+  description = "Security group reserved for bootstrap and compact OKD cluster nodes"
+  type        = string
+  default     = "openshift-nodes"
+}
+
+variable "okd_lb_security_group_name" {
+  description = "Security group for the external-to-cluster OKD DNS/load-balancer VM"
+  type        = string
+  default     = "okd-lb"
+}
+
+variable "okd_lb_instance_name" {
+  description = "Name of the permanent OKD DNS/load-balancer VM"
+  type        = string
+  default     = "okd-lb"
+}
+
+variable "okd_lb_fixed_ip" {
+  description = "Stable OpenShift machine-network address assigned to okd-lb"
+  type        = string
+  default     = "10.20.0.10"
+
+  validation {
+    condition     = can(cidrnetmask("${var.okd_lb_fixed_ip}/32"))
+    error_message = "okd_lb_fixed_ip must be a valid IPv4 address."
+  }
+}
+
+variable "okd_ignition_http_port" {
+  description = "Private HTTP port reserved for runtime Ignition delivery during OKD installation"
+  type        = number
+  default     = 8080
+}

@@ -116,3 +116,53 @@ output "postgresql" {
     data_volume_path = module.postgresql.data_volume_device
   }
 }
+
+output "openshift_network" {
+  description = "Dedicated OpenStack machine network reserved for OKD/OpenShift infrastructure"
+  value = {
+    id                    = openstack_networking_network_v2.openshift.id
+    name                  = openstack_networking_network_v2.openshift.name
+    subnet_id             = openstack_networking_subnet_v2.openshift.id
+    subnet_name           = openstack_networking_subnet_v2.openshift.name
+    cidr                  = openstack_networking_subnet_v2.openshift.cidr
+    gateway_ip            = openstack_networking_subnet_v2.openshift.gateway_ip
+    allocation_pool_start = var.openshift_allocation_pool_start
+    allocation_pool_end   = var.openshift_allocation_pool_end
+  }
+}
+
+output "okd_control_flavor" {
+  description = "Nova flavor reserved for compact OKD control-plane/worker and bootstrap machines"
+  value = {
+    id      = openstack_compute_flavor_v2.okd_control.id
+    name    = openstack_compute_flavor_v2.okd_control.name
+    ram_mb  = openstack_compute_flavor_v2.okd_control.ram
+    vcpus   = openstack_compute_flavor_v2.okd_control.vcpus
+    disk_gb = openstack_compute_flavor_v2.okd_control.disk
+  }
+}
+
+output "openshift_security_groups" {
+  description = "Security groups prepared for the OKD nodes and cluster edge"
+  value = {
+    nodes = {
+      id   = openstack_networking_secgroup_v2.openshift_nodes.id
+      name = openstack_networking_secgroup_v2.openshift_nodes.name
+    }
+    load_balancer = {
+      id   = openstack_networking_secgroup_v2.okd_lb.id
+      name = openstack_networking_secgroup_v2.okd_lb.name
+    }
+  }
+}
+
+output "okd_lb" {
+  description = "Permanent OKD DNS/load-balancer VM and its management addresses"
+  value = {
+    instance_id = openstack_compute_instance_v2.okd_lb.id
+    name        = openstack_compute_instance_v2.okd_lb.name
+    fixed_ip    = var.okd_lb_fixed_ip
+    floating_ip = openstack_networking_floatingip_v2.okd_lb.address
+    port_id     = openstack_networking_port_v2.okd_lb.id
+  }
+}
