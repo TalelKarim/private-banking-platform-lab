@@ -12,6 +12,7 @@ okd_architecture: x86_64
 
 okd_machine_network_cidr: 10.20.0.0/24
 okd_pod_network_cidr: 10.128.0.0/14
+okd_pod_host_prefix: 23
 okd_service_network_cidr: 172.30.0.0/16
 
 okd_lb_ip: 10.20.0.10

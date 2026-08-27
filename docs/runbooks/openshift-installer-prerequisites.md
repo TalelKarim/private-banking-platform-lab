@@ -112,18 +112,9 @@ Glance to make morning rebuilds faster without changing this automation.
 
 ## Next phase
 
-The next phase consumes these prerequisites to create fresh runtime installation
-assets:
-
-```text
-cluster-config.yml
-  -> fresh install-config.yaml
-  -> openshift-install create manifests
-  -> compact-cluster scheduler adjustment
-  -> openshift-install create ignition-configs
-  -> bootstrap.ign + master.ign
-  -> publish runtime Ignition artifacts on okd-lb
-```
-
-The installation directory will be regenerated on every full cluster rebuild;
-installer-generated certificates and credentials are never committed to Git.
+The runtime installation-asset layer is implemented in
+`docs/runbooks/openshift-install-assets.md`. It generates fresh manifests and
+Ignition, keeps the compact control planes schedulable, and publishes only the
+required bootstrap/master Ignition payloads to the private `okd-lb` HTTP
+endpoint. Installer-generated credentials remain runtime-only and are never
+committed to Git.
