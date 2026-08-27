@@ -188,20 +188,20 @@ curl -fsS http://10.20.0.10:8080/bootstrap.ign >/dev/null
 curl -fsS http://10.20.0.10:8080/master.ign >/dev/null
 ```
 
-## Next phase
+## Runtime-node phase
 
-The next phase creates the **secondary/stub Ignition configs** and the actual
-Nova machines:
+The runtime-node layer consumes these published assets through small verified
+Ignition stubs and creates the actual SCOS Nova machines:
 
 ```text
 bootstrap stub -> downloads bootstrap.ign from okd-lb
 master stubs   -> download master.ign from okd-lb
 
-Terraform OpenStack
+runtime Terraform
   -> bootstrap 10.20.0.11
   -> okd-01    10.20.0.21
   -> okd-02    10.20.0.22
   -> okd-03    10.20.0.23
 ```
 
-Only then does the real OKD bootstrap begin.
+See `docs/runbooks/openshift-runtime-nodes.md` for lifecycle and validation.

@@ -18,6 +18,15 @@ okd_service_network_cidr: 172.30.0.0/16
 okd_lb_ip: 10.20.0.10
 okd_ignition_http_port: 8080
 
+# Stable OpenStack foundation object names consumed by the runtime-node layer.
+# The durable foundation is still owned by the HCP Terraform workspace; the
+# short-lived bootstrap/control-plane layer only looks these objects up by name.
+okd_openstack_network_name: openshift-net
+okd_openstack_subnet_name: openshift-subnet
+okd_openstack_flavor_name: okd.control
+okd_openstack_security_group_name: openshift-nodes
+okd_openstack_keypair_name: private-banking-lab-workloads
+
 okd_bootstrap:
   name: bootstrap
   ip: 10.20.0.11
