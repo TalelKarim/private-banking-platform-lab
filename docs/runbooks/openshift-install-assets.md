@@ -183,7 +183,7 @@ On `okd-lb`:
 
 ```bash
 sudo ls -l /srv/okd/ignition
-cd /srv/okd/ignition && sudo sha256sum -c ignition.sha256
+sudo sh -c 'cd /srv/okd/ignition && sha256sum -c ignition.sha256'
 curl -fsS http://10.20.0.10:8080/bootstrap.ign >/dev/null
 curl -fsS http://10.20.0.10:8080/master.ign >/dev/null
 ```

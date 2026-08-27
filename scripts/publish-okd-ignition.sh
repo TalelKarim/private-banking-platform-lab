@@ -69,8 +69,11 @@ printf 'Publishing SHA-256 manifest...\n'
 publish_file "$INSTALL_DIR/ignition.sha256" "$REMOTE_IGNITION_ROOT/ignition.sha256"
 
 printf 'Validating files on okd-lb...\n'
+# The Ignition directory is deliberately root:www-data mode 0750 so the
+# unprivileged SSH user (ubuntu) cannot cd into it. Enter the directory inside
+# the privileged shell, then verify the relative filenames from the manifest.
 ssh "${SSH_OPTS[@]}" "$REMOTE" \
-  "cd '$REMOTE_IGNITION_ROOT' && sudo sha256sum -c ignition.sha256"
+  "sudo sh -c 'cd \"$REMOTE_IGNITION_ROOT\" && sha256sum -c ignition.sha256'"
 
 local_bootstrap_sha=$(sha256sum "$INSTALL_DIR/bootstrap.ign" | awk '{print $1}')
 local_master_sha=$(sha256sum "$INSTALL_DIR/master.ign" | awk '{print $1}')
