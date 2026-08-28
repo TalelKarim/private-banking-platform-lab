@@ -190,6 +190,14 @@ resource "openstack_compute_instance_v2" "okd_lb" {
 }
 
 resource "openstack_networking_floatingip_v2" "okd_lb" {
+  # Neutron can only associate a Floating IP once lab-router has both:
+  #   1) its external gateway on public-net, and
+  #   2) an interface on openshift-subnet.
+  # The port itself can exist before the router interface is ready, so without
+  # this explicit dependency a fresh parallel Terraform apply can race and fail
+  # with ExternalGatewayForFloatingIPNotFound.
+  depends_on = [openstack_networking_router_interface_v2.openshift]
+
   pool        = openstack_networking_network_v2.external.name
   subnet_id   = openstack_networking_subnet_v2.external.id
   port_id     = openstack_networking_port_v2.okd_lb.id
