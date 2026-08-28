@@ -83,9 +83,49 @@
   register: openstack_runtime_quota_before
   changed_when: false
 
-- name: Decode current OpenStack project quotas
+- name: Normalize current OpenStack project quotas
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json
+        import sys
+
+        raw = json.load(sys.stdin)
+        if isinstance(raw, dict):
+            quotas = raw
+        elif isinstance(raw, list):
+            quotas = {}
+            for row in raw:
+                if not isinstance(row, dict):
+                    continue
+                key = row.get("Quota") or row.get("Resource") or row.get("Field")
+                if "Limit" in row:
+                    value = row["Limit"]
+                elif "Value" in row:
+                    value = row["Value"]
+                else:
+                    continue
+                if key is not None:
+                    quotas[str(key)] = value
+        else:
+            raise SystemExit(f"Unsupported quota JSON type: {type(raw).__name__}")
+
+        required = ("instances", "cores", "ram")
+        missing = [key for key in required if key not in quotas]
+        if missing:
+            raise SystemExit(f"Missing compute quota fields: {', '.join(missing)}")
+
+        print(json.dumps({key: quotas[key] for key in required}))
+  args:
+    stdin: "{{ openstack_runtime_quota_before.stdout }}"
+  register: openstack_runtime_quota_before_normalized
+  changed_when: false
+
+- name: Decode normalized current OpenStack project quotas
   ansible.builtin.set_fact:
-    openstack_runtime_current_quota: "{{ openstack_runtime_quota_before.stdout | from_json }}"
+    openstack_runtime_current_quota: "{{ openstack_runtime_quota_before_normalized.stdout | from_json }}"
 
 - name: Converge compute quotas required by the nested OKD lab
   ansible.builtin.command:
@@ -127,12 +167,56 @@
   register: openstack_runtime_quota_after
   changed_when: false
 
+- name: Normalize converged OpenStack project quotas
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json
+        import sys
+
+        raw = json.load(sys.stdin)
+        if isinstance(raw, dict):
+            quotas = raw
+        elif isinstance(raw, list):
+            quotas = {}
+            for row in raw:
+                if not isinstance(row, dict):
+                    continue
+                key = row.get("Quota") or row.get("Resource") or row.get("Field")
+                if "Limit" in row:
+                    value = row["Limit"]
+                elif "Value" in row:
+                    value = row["Value"]
+                else:
+                    continue
+                if key is not None:
+                    quotas[str(key)] = value
+        else:
+            raise SystemExit(f"Unsupported quota JSON type: {type(raw).__name__}")
+
+        required = ("instances", "cores", "ram")
+        missing = [key for key in required if key not in quotas]
+        if missing:
+            raise SystemExit(f"Missing compute quota fields: {', '.join(missing)}")
+
+        print(json.dumps({key: quotas[key] for key in required}))
+  args:
+    stdin: "{{ openstack_runtime_quota_after.stdout }}"
+  register: openstack_runtime_quota_after_normalized
+  changed_when: false
+
+- name: Decode normalized converged OpenStack project quotas
+  ansible.builtin.set_fact:
+    openstack_runtime_converged_quota: "{{ openstack_runtime_quota_after_normalized.stdout | from_json }}"
+
 - name: Assert the compute quota guardrails are correct
   ansible.builtin.assert:
     that:
-      - (openstack_runtime_quota_after.stdout | from_json).instances | int == openstack_runtime_quota_instances | int
-      - (openstack_runtime_quota_after.stdout | from_json).cores | int == openstack_runtime_quota_cores | int
-      - (openstack_runtime_quota_after.stdout | from_json).ram | int == openstack_runtime_quota_ram_mb | int
+      - openstack_runtime_converged_quota.instances | int == openstack_runtime_quota_instances | int
+      - openstack_runtime_converged_quota.cores | int == openstack_runtime_quota_cores | int
+      - openstack_runtime_converged_quota.ram | int == openstack_runtime_quota_ram_mb | int
     fail_msg: "OpenStack compute quotas did not converge to the lab values."
 
 - name: Report converged OpenStack runtime guardrails
