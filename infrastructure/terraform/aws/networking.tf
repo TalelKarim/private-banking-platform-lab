@@ -33,15 +33,17 @@ resource "aws_vpc_security_group_ingress_rule" "ssh_from_instance_connect" {
 }
 
 
-# Openstack dashboard direct depuis ton Mac uniquement.
-resource "aws_vpc_security_group_ingress_rule" "http_from_mac" {
+# Horizon is no longer exposed directly from the lab-host. Public browser
+# traffic enters through ALB -> edge-gateway, then reaches this private VPC IP.
+
+resource "aws_vpc_security_group_ingress_rule" "horizon_http_from_edge" {
   security_group_id = aws_security_group.lab.id
 
-  description = "Openstack dashboards from the current Mac public IPv4"
+  description = "Horizon HTTP from the dedicated edge gateway only"
   ip_protocol = "tcp"
   from_port   = 80
   to_port     = 80
-  cidr_ipv4   = local.effective_ssh_cidr
+  cidr_ipv4   = "${var.edge_gateway_private_ip}/32"
 }
 
 resource "aws_vpc_security_group_egress_rule" "all_ipv4" {

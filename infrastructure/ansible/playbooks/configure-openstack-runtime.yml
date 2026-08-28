@@ -4,5 +4,10 @@
   gather_facts: true
   become: true
 
+  pre_tasks:
+    - name: Load canonical lab/OKD DNS configuration
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../../platform/openshift/cluster-config.yml"
+
   roles:
     - role: openstack_runtime_admin

@@ -18,3 +18,19 @@ openstack_runtime_tcp_ports:
   - 6443
 openstack_runtime_udp_ports:
   - 53
+
+# The edge-gateway uses the lab-host as a routed middlebox only for OpenStack
+# floating-IP backends. Horizon is reached directly on the lab-host VPC IP.
+openstack_runtime_edge_gateway_cidr: 172.31.31.71/32
+openstack_runtime_edge_tcp_ports:
+  - 443
+  - 8080
+
+# Horizon is published as HTTPS by the AWS ALB, while Kolla keeps its local
+# Apache/Horizon listener on HTTP. These paths let the runtime role install a
+# standard Kolla local_settings.d override and reconfigure only Horizon.
+openstack_runtime_kolla_venv: /opt/kolla-venv
+openstack_runtime_kolla_inventory: /data/openstack/kolla/inventory/all-in-one
+openstack_runtime_kolla_config_dir: /etc/kolla
+openstack_runtime_kolla_collections_path: /opt/kolla-venv/collections
+openstack_runtime_horizon_public_fqdn: "cloud.{{ okd_base_domain }}"

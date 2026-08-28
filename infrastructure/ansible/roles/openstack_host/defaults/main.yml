@@ -22,6 +22,7 @@ openstack_ops_runner_udp_ports:
   - 53
 openstack_edge_gateway_cidr: 172.31.31.71/32
 openstack_edge_backend_tcp_ports:
+  - 443
   - 8080
 
 cinder_volume_group: cinder-volumes

@@ -10,6 +10,16 @@ JENKINS_FLOATING_IP=${JENKINS_FLOATING_IP:-}
 JENKINS_WORKER_FLOATING_IP=${JENKINS_WORKER_FLOATING_IP:-}
 POSTGRESQL_FLOATING_IP=${POSTGRESQL_FLOATING_IP:-}
 OKD_LB_FLOATING_IP=${OKD_LB_FLOATING_IP:-}
+ANSIBLE_PYTHON=${ANSIBLE_PYTHON:-/opt/ansible-venv/bin/python}
+
+read -r LAB_BASE_DOMAIN OKD_CLUSTER_NAME < <(
+  "$ANSIBLE_PYTHON" - "$ROOT_DIR/platform/openshift/cluster-config.yml" <<'PY'
+import sys, yaml
+with open(sys.argv[1], encoding='utf-8') as handle:
+    cfg = yaml.safe_load(handle)
+print(cfg['okd_base_domain'], cfg['okd_cluster_name'])
+PY
+)
 
 printf '%s\n' '============================================================'
 printf '%s\n' ' Private Banking Platform Lab - Configuration convergence'
@@ -70,7 +80,7 @@ printf '[8/14] Converging PostgreSQL and its Cinder-backed data layer with Ansib
 "$ROOT_DIR/scripts/configure-postgresql.sh" "$POSTGRESQL_FLOATING_IP"
 
 printf '[9/14] Converging edge gateway with Ansible...\n'
-"$ROOT_DIR/scripts/configure-edge-gateway.sh" "$JENKINS_FLOATING_IP"
+"$ROOT_DIR/scripts/configure-edge-gateway.sh" "$JENKINS_FLOATING_IP" "$OKD_LB_FLOATING_IP"
 
 printf '[10/14] Converging OKD DNS/load-balancer foundation with Ansible...\n'
 "$ROOT_DIR/scripts/configure-okd-lb.sh" "$OKD_LB_FLOATING_IP"
@@ -100,5 +110,8 @@ printf '%-24s %s\n' 'Controller FIP' "$JENKINS_FLOATING_IP"
 printf '%-24s %s\n' 'Worker FIP' "$JENKINS_WORKER_FLOATING_IP"
 printf '%-24s %s\n' 'PostgreSQL FIP' "$POSTGRESQL_FLOATING_IP"
 printf '%-24s %s\n' 'okd-lb FIP' "$OKD_LB_FLOATING_IP"
+printf '%-24s %s\n' 'Jenkins URL' "https://jenkins.$LAB_BASE_DOMAIN"
+printf '%-24s %s\n' 'Horizon URL' "https://cloud.$LAB_BASE_DOMAIN"
+printf '%-24s %s\n' 'OpenShift Console' "https://console-openshift-console.apps.$OKD_CLUSTER_NAME.$LAB_BASE_DOMAIN"
 printf '%s\n' '------------------------------------------------------------'
 printf '%s\n' 'LAB CONFIGURATION READY'

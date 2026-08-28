@@ -1,0 +1,13 @@
+# Managed by Ansible - private-banking-platform-lab
+# The browser terminates TLS on the AWS ALB. Trust only the proxy scheme header
+# inserted by our ALB/Nginx path so Django treats the original request as HTTPS.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_PROXY_ADDR_HEADER = 'HTTP_X_FORWARDED_FOR'
+
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://{{ openstack_runtime_horizon_public_fqdn }}',
+]

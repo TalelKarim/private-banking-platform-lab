@@ -67,6 +67,33 @@
   register: openstack_runtime_udp_forwarding
   changed_when: "'CHANGED' in openstack_runtime_udp_forwarding.stdout"
 
+- name: Ensure edge-gateway TCP forwarding to approved OpenStack floating-IP backends
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if iptables -C FORWARD \
+      -i "{{ ansible_default_ipv4.interface }}" \
+      -o "{{ openstack_runtime_external_host_interface }}" \
+      -s "{{ openstack_runtime_edge_gateway_cidr }}" \
+      -d "{{ openstack_runtime_external_cidr }}" \
+      -p tcp --dport "{{ item }}" \
+      -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null; then
+      echo PRESENT
+    else
+      iptables -A FORWARD \
+        -i "{{ ansible_default_ipv4.interface }}" \
+        -o "{{ openstack_runtime_external_host_interface }}" \
+        -s "{{ openstack_runtime_edge_gateway_cidr }}" \
+        -d "{{ openstack_runtime_external_cidr }}" \
+        -p tcp --dport "{{ item }}" \
+        -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+      echo CHANGED
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ openstack_runtime_edge_tcp_ports }}"
+  register: openstack_runtime_edge_forwarding
+  changed_when: "'CHANGED' in openstack_runtime_edge_forwarding.stdout"
+
 - name: Read current OpenStack project quotas
   ansible.builtin.command:
     argv:
@@ -219,6 +246,38 @@
       - openstack_runtime_converged_quota.ram | int == openstack_runtime_quota_ram_mb | int
     fail_msg: "OpenStack compute quotas did not converge to the lab values."
 
+- name: Ensure Horizon custom configuration directory exists
+  ansible.builtin.file:
+    path: "{{ openstack_runtime_kolla_config_dir }}/config/horizon"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure Horizon for HTTPS termination on the public ALB
+  ansible.builtin.template:
+    src: horizon-public-proxy-settings.py.j2
+    dest: "{{ openstack_runtime_kolla_config_dir }}/config/horizon/_9999-custom-settings.py"
+    owner: root
+    group: root
+    mode: "0644"
+  register: openstack_runtime_horizon_proxy_settings
+
+- name: Reconfigure Horizon when its public proxy settings change
+  ansible.builtin.command:
+    argv:
+      - "{{ openstack_runtime_kolla_venv }}/bin/kolla-ansible"
+      - reconfigure
+      - -i
+      - "{{ openstack_runtime_kolla_inventory }}"
+      - --tags
+      - horizon
+  environment:
+    PATH: "{{ openstack_runtime_kolla_venv }}/bin:{{ ansible_env.PATH }}"
+    ANSIBLE_COLLECTIONS_PATH: "{{ openstack_runtime_kolla_collections_path }}:{{ ansible_env.HOME }}/.ansible/collections:/usr/share/ansible/collections"
+  when: openstack_runtime_horizon_proxy_settings.changed
+  changed_when: true
+
 - name: Report converged OpenStack runtime guardrails
   ansible.builtin.debug:
     msg:
@@ -227,3 +286,4 @@
       - "quota.ram_mb={{ openstack_runtime_quota_ram_mb }}"
       - "forward.tcp={{ openstack_runtime_tcp_ports | join(',') }}"
       - "forward.udp={{ openstack_runtime_udp_ports | join(',') }}"
+      - "edge.forward.tcp={{ openstack_runtime_edge_tcp_ports | join(',') }}"

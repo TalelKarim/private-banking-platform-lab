@@ -197,7 +197,7 @@ output "edge_gateway_public_ip" {
 }
 
 output "edge_gateway_http_url" {
-  description = "Temporary direct HTTP URL before Route53/TLS"
+  description = "Direct edge EIP retained for administration/debug only; public web access uses the ALB"
   value       = "http://${aws_eip.edge_gateway.public_ip}"
 }
 
@@ -214,4 +214,29 @@ output "edge_gateway_ssm_command" {
 output "edge_gateway_bootstrap_log_command" {
   description = "Inspect edge cloud-init"
   value       = "sudo cloud-init status --wait && sudo tail -n 200 /var/log/private-banking-lab-edge-gateway-bootstrap.log"
+}
+
+output "public_alb_dns_name" {
+  description = "AWS DNS name of the ephemeral public Application Load Balancer"
+  value       = aws_lb.public.dns_name
+}
+
+output "public_alb_arn" {
+  description = "ARN of the ephemeral public Application Load Balancer"
+  value       = aws_lb.public.arn
+}
+
+output "public_alb_target_group_arn" {
+  description = "Target group ARN used to validate edge-gateway health"
+  value       = aws_lb_target_group.edge.arn
+}
+
+output "public_lab_urls" {
+  description = "Browser-facing HTTPS endpoints published through Route53 -> ALB -> edge-gateway"
+  value = {
+    jenkins          = "https://${local.public_service_fqdns.jenkins}"
+    openstack        = "https://${local.public_service_fqdns.openstack}"
+    openshift_console = "https://console-openshift-console.apps.${local.okd_cluster}.${local.lab_base_domain}"
+    openshift_oauth   = "https://oauth-openshift.apps.${local.okd_cluster}.${local.lab_base_domain}"
+  }
 }

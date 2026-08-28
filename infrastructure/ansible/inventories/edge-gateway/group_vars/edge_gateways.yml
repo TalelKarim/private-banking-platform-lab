@@ -3,10 +3,33 @@ common_linux_hostname: edge-gateway
 edge_nginx_client_max_body_size: 64m
 edge_nginx_proxy_read_timeout_seconds: 300
 edge_nginx_proxy_send_timeout_seconds: 300
+
+# The public ALB terminates browser TLS. Nginx keeps all application-aware
+# routing in one place and preserves the original Host/X-Forwarded-* headers.
 edge_nginx_routes:
-  - name: jenkins
+  - name: default
     server_name: "_"
     default_server: true
+    direct_response: 404
+
+  - name: jenkins
+    server_name: "jenkins.{{ edge_lab_base_domain }}"
     backend_scheme: http
     backend_host: "{{ jenkins_floating_ip }}"
     backend_port: 8080
+
+  - name: horizon
+    server_name: "cloud.{{ edge_lab_base_domain }}"
+    backend_scheme: http
+    backend_host: "{{ openstack_horizon_backend_host }}"
+    backend_port: 80
+
+  - name: openshift-apps
+    server_name: "*.apps.{{ edge_okd_cluster_name }}.{{ edge_lab_base_domain }}"
+    backend_scheme: https
+    backend_host: "{{ okd_lb_floating_ip }}"
+    backend_port: 443
+    backend_tls_sni: true
+    # The browser-facing certificate is ACM on the ALB. This second encrypted
+    # hop uses the cluster-generated OpenShift ingress certificate internally.
+    backend_tls_verify: false

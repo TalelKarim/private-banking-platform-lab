@@ -233,7 +233,7 @@ variable "edge_client_cidr" {
 variable "edge_backend_tcp_ports" {
   description = "OpenStack floating-IP TCP ports that the edge gateway may reach through the lab host"
   type        = set(number)
-  default     = [8080]
+  default     = [443, 8080]
   validation {
     condition     = alltrue([for port in var.edge_backend_tcp_ports : port >= 1 && port <= 65535])
     error_message = "edge_backend_tcp_ports must contain valid TCP port numbers."

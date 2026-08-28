@@ -3,7 +3,11 @@
 # Terraform owns the OpenStack infrastructure; Ansible and the future
 # openshift-install orchestration consume these stable logical values.
 okd_cluster_name: okd
-okd_base_domain: lab.test
+# Public Route53 zone already owned by the user; Terraform only looks it up.
+lab_public_dns_zone: talelkarimchebbi.com
+# Use a real delegated DNS suffix for the cluster so console/OAuth/future Routes
+# can be published cleanly through the AWS public ingress.
+okd_base_domain: lab.talelkarimchebbi.com
 
 # Pin one stable OKD release so every daily rebuild uses the same installer,
 # client tools and matching CentOS Stream CoreOS boot image.

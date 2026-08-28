@@ -1,0 +1,12 @@
+# Managed by Ansible - private-banking-platform-lab
+# Preserve the original public scheme injected by the ALB, while keeping local
+# direct health/debug requests functional when X-Forwarded-Proto is absent.
+map $http_x_forwarded_proto $private_banking_forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
+map $http_upgrade $private_banking_connection_upgrade {
+    default upgrade;
+    ""      close;
+}

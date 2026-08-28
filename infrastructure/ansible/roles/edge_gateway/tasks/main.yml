@@ -5,10 +5,13 @@
       - edge_nginx_routes | length > 0
       - item.name | length > 0
       - item.server_name | length > 0
-      - item.backend_scheme in ['http', 'https']
-      - item.backend_host | length > 0
-      - item.backend_port | int > 0
-      - item.backend_port | int < 65536
+      - >-
+        (item.direct_response is defined and item.direct_response | int >= 400 and item.direct_response | int < 600)
+        or
+        (item.backend_scheme is defined and item.backend_scheme in ['http', 'https']
+         and item.backend_host is defined and item.backend_host | length > 0
+         and item.backend_port is defined and item.backend_port | int > 0
+         and item.backend_port | int < 65536)
   loop: "{{ edge_nginx_routes }}"
   loop_control:
     label: "{{ item.name }}"
@@ -25,6 +28,15 @@
     name: "{{ edge_nginx_package }}"
     state: present
     update_cache: true
+
+- name: Render ALB-aware proxy header maps
+  ansible.builtin.template:
+    src: proxy-maps.conf.j2
+    dest: "{{ edge_nginx_conf_d_dir }}/private-banking-proxy-maps.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Validate and reload Nginx
 
 - name: Remove the distribution default Nginx site
   ansible.builtin.file:
@@ -63,9 +75,15 @@
     enabled: true
     state: started
 
-- name: Verify Nginx can proxy the default route locally
+- name: Verify the local ALB health endpoint
   ansible.builtin.uri:
-    url: http://127.0.0.1/
-    status_code: [200, 301, 302, 401, 403]
-    return_content: false
+    url: http://127.0.0.1/healthz
+    status_code: 200
+    return_content: true
+  register: edge_healthcheck
   changed_when: false
+
+- name: Assert the local ALB health endpoint payload
+  ansible.builtin.assert:
+    that:
+      - edge_healthcheck.content | trim == 'ok'

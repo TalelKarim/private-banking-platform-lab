@@ -29,22 +29,17 @@ resource "aws_security_group" "edge_gateway" {
   tags                   = { Name = "${var.project_name}-edge-gateway-sg" }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "edge_gateway_http" {
-  security_group_id = aws_security_group.edge_gateway.id
-  description       = "HTTP from the explicitly allowed lab client CIDR"
-  ip_protocol       = "tcp"
-  from_port         = 80
-  to_port           = 80
-  cidr_ipv4         = local.effective_edge_client_cidr
-}
+# Public web traffic terminates TLS on the ALB. The edge accepts HTTP only from
+# that ALB security group; direct web access to the edge EIP is intentionally
+# removed while SSH/SSM administration remains available.
 
-resource "aws_vpc_security_group_ingress_rule" "edge_gateway_https" {
-  security_group_id = aws_security_group.edge_gateway.id
-  description       = "HTTPS reserved for the Route53/TLS phase"
-  ip_protocol       = "tcp"
-  from_port         = 443
-  to_port           = 443
-  cidr_ipv4         = local.effective_edge_client_cidr
+resource "aws_vpc_security_group_ingress_rule" "edge_gateway_http_from_alb" {
+  security_group_id            = aws_security_group.edge_gateway.id
+  referenced_security_group_id = aws_security_group.public_alb.id
+  description                  = "HTTP reverse-proxy traffic from the public ALB only"
+  ip_protocol                  = "tcp"
+  from_port                    = 80
+  to_port                      = 80
 }
 
 resource "aws_vpc_security_group_ingress_rule" "edge_gateway_ssh_from_mac" {

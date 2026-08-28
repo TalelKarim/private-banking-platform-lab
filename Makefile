@@ -77,8 +77,9 @@ restore-postgresql:
 	POSTGRESQL_FLOATING_IP="$(POSTGRESQL_FLOATING_IP)" BACKUP="$(BACKUP)" TARGET_DB="$(TARGET_DB)" CONFIRM="$(CONFIRM)" ./scripts/postgresql-backup.sh restore
 
 configure-edge-gateway:
-	@test -n "$(JENKINS_FLOATING_IP)" || (echo "Usage: make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x" >&2; exit 2)
-	./scripts/configure-edge-gateway.sh "$(JENKINS_FLOATING_IP)"
+	@test -n "$(JENKINS_FLOATING_IP)" || (echo "Usage: make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x OKD_LB_FLOATING_IP=192.168.250.y" >&2; exit 2)
+	@test -n "$(OKD_LB_FLOATING_IP)" || (echo "Usage: make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x OKD_LB_FLOATING_IP=192.168.250.y" >&2; exit 2)
+	./scripts/configure-edge-gateway.sh "$(JENKINS_FLOATING_IP)" "$(OKD_LB_FLOATING_IP)"
 
 
 configure-openstack-runtime:
