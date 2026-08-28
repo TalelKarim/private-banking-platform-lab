@@ -240,3 +240,23 @@ output "public_lab_urls" {
     openshift_oauth   = "https://oauth-openshift.apps.${local.okd_cluster}.${local.lab_base_domain}"
   }
 }
+
+output "cloud_browser" {
+  description = "Temporary Windows browser workstation and stable source IPv4"
+  value = var.cloud_browser_enabled ? {
+    instance_id = aws_instance.cloud_browser[0].id
+    public_ip   = aws_eip.cloud_browser[0].public_ip
+    allowed_cidr = "${aws_eip.cloud_browser[0].public_ip}/32"
+    instance_type = aws_instance.cloud_browser[0].instance_type
+  } : null
+}
+
+output "cloud_browser_password_command" {
+  description = "Decrypt the Windows Administrator password after EC2 has generated it (normally a few minutes after first boot)"
+  value = var.cloud_browser_enabled ? "aws ec2 get-password-data --instance-id ${aws_instance.cloud_browser[0].id} --priv-launch-key '${local_sensitive_file.ssh_private_key.filename}' --region ${var.aws_region} --query PasswordData --output text" : null
+}
+
+output "cloud_browser_ssm_check_command" {
+  description = "Check whether the Windows node has registered with Systems Manager"
+  value = var.cloud_browser_enabled ? "aws ssm describe-instance-information --filters Key=InstanceIds,Values=${aws_instance.cloud_browser[0].id} --region ${var.aws_region} --query 'InstanceInformationList[0].[PingStatus,PlatformName,AgentVersion]' --output table" : null
+}

@@ -40,3 +40,11 @@ edge_gateway_root_volume_size = 12
 edge_gateway_private_ip       = "172.31.31.71"
 # edge_client_cidr = "82.10.20.30/32"
 edge_backend_tcp_ports = [443, 8080]
+
+# Optional cloud-hosted browser for corporate laptops that cannot directly use
+# the lab UIs. Enable only while needed; t3.small is deliberately inexpensive.
+# The instance gets a fixed EIP and that /32 is automatically allowed on the
+# public ALB for Jenkins, Horizon and OpenShift routes.
+cloud_browser_enabled          = false
+cloud_browser_instance_type    = "t3.small"
+cloud_browser_root_volume_size = 30

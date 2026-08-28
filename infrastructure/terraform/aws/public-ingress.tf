@@ -148,3 +148,28 @@ resource "aws_route53_record" "public_services" {
     evaluate_target_health = true
   }
 }
+
+# Optional cloud-browser source. Traffic from the EC2 browser to this public ALB
+# traverses the Internet Gateway and is source-NATed to the browser Elastic IP,
+# so the ALB sees this fixed /32 as the client IPv4.
+resource "aws_vpc_security_group_ingress_rule" "public_alb_http_from_cloud_browser" {
+  count = var.cloud_browser_enabled ? 1 : 0
+
+  security_group_id = aws_security_group.public_alb.id
+  description       = "HTTP redirect from the temporary AWS cloud-browser EIP"
+  ip_protocol       = "tcp"
+  from_port         = 80
+  to_port           = 80
+  cidr_ipv4         = "${aws_eip.cloud_browser[0].public_ip}/32"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "public_alb_https_from_cloud_browser" {
+  count = var.cloud_browser_enabled ? 1 : 0
+
+  security_group_id = aws_security_group.public_alb.id
+  description       = "HTTPS from the temporary AWS cloud-browser EIP"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  cidr_ipv4         = "${aws_eip.cloud_browser[0].public_ip}/32"
+}

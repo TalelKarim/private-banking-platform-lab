@@ -249,3 +249,26 @@ variable "lab_ssh_private_key_ssm_parameter_name" {
     error_message = "lab_ssh_private_key_ssm_parameter_name must be an absolute SSM parameter path."
   }
 }
+
+variable "cloud_browser_enabled" {
+  description = "Create the temporary SSM-managed Windows cloud browser. Keep false when it is not needed to avoid Windows/EIP cost."
+  type        = bool
+  default     = false
+}
+
+variable "cloud_browser_instance_type" {
+  description = "EC2 instance type for the Windows cloud browser. t3.small is the low-cost practical minimum for a graphical Windows browser."
+  type        = string
+  default     = "t3.small"
+}
+
+variable "cloud_browser_root_volume_size" {
+  description = "Root gp3 volume size in GiB for the Windows cloud browser"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.cloud_browser_root_volume_size >= 30
+    error_message = "The Windows cloud-browser root volume must be at least 30 GiB."
+  }
+}

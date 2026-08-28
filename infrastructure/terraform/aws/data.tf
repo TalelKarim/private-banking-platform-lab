@@ -78,6 +78,15 @@ data "aws_ssm_parameter" "ubuntu_2404_ami" {
   name = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
 }
 
+# AWS-maintained parameter: current Windows Server 2022 Desktop Experience AMI.
+# Keep the lookup conditional so the optional browser feature has zero impact
+# on normal lab plans while it is disabled.
+data "aws_ssm_parameter" "windows_2022_ami" {
+  count = var.cloud_browser_enabled ? 1 : 0
+
+  name = "/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base"
+}
+
 data "aws_ec2_managed_prefix_list" "instance_connect" {
   name = "com.amazonaws.${var.aws_region}.ec2-instance-connect"
 }
