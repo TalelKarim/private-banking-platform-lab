@@ -338,3 +338,50 @@ resource "openstack_networking_secgroup_rule_v2" "postgresql_openshift" {
   remote_ip_prefix  = var.openshift_machine_network_cidr
   security_group_id = openstack_networking_secgroup_v2.postgresql.id
 }
+
+# Provider-network management fallback. The normal AWS-routed source remains
+# the ops-runner CIDR, but these rules also keep API/DNS reachable if the Linux
+# middlebox path is later changed to source traffic from the provider network.
+resource "openstack_networking_secgroup_rule_v2" "okd_lb_api_external_management" {
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  protocol          = "tcp"
+  port_range_min    = 6443
+  port_range_max    = 6443
+  remote_ip_prefix  = var.management_source_cidr
+  security_group_id = openstack_networking_secgroup_v2.okd_lb.id
+}
+
+resource "openstack_networking_secgroup_rule_v2" "okd_lb_dns_udp_external_management" {
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  protocol          = "udp"
+  port_range_min    = 53
+  port_range_max    = 53
+  remote_ip_prefix  = var.management_source_cidr
+  security_group_id = openstack_networking_secgroup_v2.okd_lb.id
+}
+
+resource "openstack_networking_secgroup_rule_v2" "okd_lb_dns_tcp_external_management" {
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  protocol          = "tcp"
+  port_range_min    = 53
+  port_range_max    = 53
+  remote_ip_prefix  = var.management_source_cidr
+  security_group_id = openstack_networking_secgroup_v2.okd_lb.id
+}
+
+# The compact nodes have no floating IPs. Troubleshooting SSH is deliberately
+# performed through okd-lb, whose fixed address is the only explicit SSH source.
+# The broader east-west rule already permits this today; keeping this rule makes
+# the intended management path survive a future tightening of east-west traffic.
+resource "openstack_networking_secgroup_rule_v2" "openshift_nodes_ssh_okd_lb" {
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  protocol          = "tcp"
+  port_range_min    = 22
+  port_range_max    = 22
+  remote_ip_prefix  = "${var.okd_lb_fixed_ip}/32"
+  security_group_id = openstack_networking_secgroup_v2.openshift_nodes.id
+}

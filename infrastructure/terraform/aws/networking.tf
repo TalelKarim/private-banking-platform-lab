@@ -116,3 +116,32 @@ resource "aws_vpc_security_group_ingress_rule" "openstack_backend_from_edge" {
   from_port   = each.value
   to_port     = each.value
 }
+
+# Routed packets to OpenStack floating IPs traverse the lab-host ENI. Security
+# group references are not relied upon for middlebox/transit traffic, so allow
+# only the current ops-runner private IPv4 on the management ports required by
+# OKD client/bootstrap administration.
+resource "aws_vpc_security_group_ingress_rule" "openstack_management_tcp_from_ops_runner" {
+  for_each = {
+    dns     = 53
+    okd_api = 6443
+  }
+
+  security_group_id = aws_security_group.lab.id
+
+  description = "Routed OpenStack ${each.key} TCP/${each.value} from ops-runner"
+  ip_protocol = "tcp"
+  from_port   = each.value
+  to_port     = each.value
+  cidr_ipv4   = "${aws_instance.ops_runner.private_ip}/32"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "openstack_dns_udp_from_ops_runner" {
+  security_group_id = aws_security_group.lab.id
+
+  description = "Routed OpenStack DNS UDP/53 from ops-runner"
+  ip_protocol = "udp"
+  from_port   = 53
+  to_port     = 53
+  cidr_ipv4   = "${aws_instance.ops_runner.private_ip}/32"
+}

@@ -1,0 +1,20 @@
+---
+openstack_runtime_project_name: admin
+openstack_runtime_quota_instances: 100
+openstack_runtime_quota_cores: 200
+# OpenStack expects MiB; 500 GiB = 500 * 1024 MiB.
+openstack_runtime_quota_ram_mb: 512000
+
+openstack_runtime_client: /opt/openstack-client-venv/bin/openstack
+openstack_runtime_clouds_file: /data/openstack/secrets/clouds.yaml
+openstack_runtime_cloud: kolla-admin
+
+openstack_runtime_external_host_interface: os-host
+openstack_runtime_external_cidr: 192.168.250.0/24
+openstack_runtime_aws_management_cidr: 172.31.16.0/20
+openstack_runtime_tcp_ports:
+  - 22
+  - 53
+  - 6443
+openstack_runtime_udp_ports:
+  - 53

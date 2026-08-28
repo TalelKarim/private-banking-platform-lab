@@ -1,0 +1,145 @@
+---
+- name: Validate OpenStack runtime administration prerequisites
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ openstack_runtime_client }}"
+    - "{{ openstack_runtime_clouds_file }}"
+  register: openstack_runtime_prereqs
+
+- name: Assert OpenStack client and cloud configuration are available
+  ansible.builtin.assert:
+    that:
+      - openstack_runtime_prereqs.results | map(attribute='stat.exists') | min
+    fail_msg: "OpenStack client/clouds.yaml are not ready on lab-host."
+
+- name: Ensure ops-runner TCP forwarding to approved OpenStack floating-IP ports
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if iptables -C FORWARD \
+      -i "{{ ansible_default_ipv4.interface }}" \
+      -o "{{ openstack_runtime_external_host_interface }}" \
+      -s "{{ openstack_runtime_aws_management_cidr }}" \
+      -d "{{ openstack_runtime_external_cidr }}" \
+      -p tcp --dport "{{ item }}" \
+      -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null; then
+      echo PRESENT
+    else
+      iptables -A FORWARD \
+        -i "{{ ansible_default_ipv4.interface }}" \
+        -o "{{ openstack_runtime_external_host_interface }}" \
+        -s "{{ openstack_runtime_aws_management_cidr }}" \
+        -d "{{ openstack_runtime_external_cidr }}" \
+        -p tcp --dport "{{ item }}" \
+        -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+      echo CHANGED
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ openstack_runtime_tcp_ports }}"
+  register: openstack_runtime_tcp_forwarding
+  changed_when: "'CHANGED' in openstack_runtime_tcp_forwarding.stdout"
+
+- name: Ensure ops-runner UDP forwarding to approved OpenStack floating-IP ports
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if iptables -C FORWARD \
+      -i "{{ ansible_default_ipv4.interface }}" \
+      -o "{{ openstack_runtime_external_host_interface }}" \
+      -s "{{ openstack_runtime_aws_management_cidr }}" \
+      -d "{{ openstack_runtime_external_cidr }}" \
+      -p udp --dport "{{ item }}" \
+      -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null; then
+      echo PRESENT
+    else
+      iptables -A FORWARD \
+        -i "{{ ansible_default_ipv4.interface }}" \
+        -o "{{ openstack_runtime_external_host_interface }}" \
+        -s "{{ openstack_runtime_aws_management_cidr }}" \
+        -d "{{ openstack_runtime_external_cidr }}" \
+        -p udp --dport "{{ item }}" \
+        -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+      echo CHANGED
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ openstack_runtime_udp_ports }}"
+  register: openstack_runtime_udp_forwarding
+  changed_when: "'CHANGED' in openstack_runtime_udp_forwarding.stdout"
+
+- name: Read current OpenStack project quotas
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - "OS_CLIENT_CONFIG_FILE={{ openstack_runtime_clouds_file }}"
+      - "{{ openstack_runtime_client }}"
+      - --os-cloud
+      - "{{ openstack_runtime_cloud }}"
+      - quota
+      - show
+      - "{{ openstack_runtime_project_name }}"
+      - -f
+      - json
+  register: openstack_runtime_quota_before
+  changed_when: false
+
+- name: Decode current OpenStack project quotas
+  ansible.builtin.set_fact:
+    openstack_runtime_current_quota: "{{ openstack_runtime_quota_before.stdout | from_json }}"
+
+- name: Converge compute quotas required by the nested OKD lab
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - "OS_CLIENT_CONFIG_FILE={{ openstack_runtime_clouds_file }}"
+      - "{{ openstack_runtime_client }}"
+      - --os-cloud
+      - "{{ openstack_runtime_cloud }}"
+      - quota
+      - set
+      - --instances
+      - "{{ openstack_runtime_quota_instances | string }}"
+      - --cores
+      - "{{ openstack_runtime_quota_cores | string }}"
+      - --ram
+      - "{{ openstack_runtime_quota_ram_mb | string }}"
+      - "{{ openstack_runtime_project_name }}"
+  when: >-
+    (openstack_runtime_current_quota.instances | int != openstack_runtime_quota_instances | int)
+    or (openstack_runtime_current_quota.cores | int != openstack_runtime_quota_cores | int)
+    or (openstack_runtime_current_quota.ram | int != openstack_runtime_quota_ram_mb | int)
+  register: openstack_runtime_quota_set
+  changed_when: true
+
+- name: Read converged OpenStack project quotas
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - "OS_CLIENT_CONFIG_FILE={{ openstack_runtime_clouds_file }}"
+      - "{{ openstack_runtime_client }}"
+      - --os-cloud
+      - "{{ openstack_runtime_cloud }}"
+      - quota
+      - show
+      - "{{ openstack_runtime_project_name }}"
+      - -f
+      - json
+  register: openstack_runtime_quota_after
+  changed_when: false
+
+- name: Assert the compute quota guardrails are correct
+  ansible.builtin.assert:
+    that:
+      - (openstack_runtime_quota_after.stdout | from_json).instances | int == openstack_runtime_quota_instances | int
+      - (openstack_runtime_quota_after.stdout | from_json).cores | int == openstack_runtime_quota_cores | int
+      - (openstack_runtime_quota_after.stdout | from_json).ram | int == openstack_runtime_quota_ram_mb | int
+    fail_msg: "OpenStack compute quotas did not converge to the lab values."
+
+- name: Report converged OpenStack runtime guardrails
+  ansible.builtin.debug:
+    msg:
+      - "quota.instances={{ openstack_runtime_quota_instances }}"
+      - "quota.cores={{ openstack_runtime_quota_cores }}"
+      - "quota.ram_mb={{ openstack_runtime_quota_ram_mb }}"
+      - "forward.tcp={{ openstack_runtime_tcp_ports | join(',') }}"
+      - "forward.udp={{ openstack_runtime_udp_ports | join(',') }}"

@@ -1,12 +1,14 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes status-okd-nodes destroy-okd-nodes okd-node-console prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
 	  'bootstrap-ansible     Install the local Ansible control environment and configure the host' \
 	  'configure-lab         Discover runtime addresses and converge all lab services from ops-runner' \
+	  'configure-openstack-runtime Converge OpenStack quotas + routed management forwarding' \
+	  'configure-okd-client-access Configure ops-runner API resolution + SSH jump aliases' \
 	  'configure-jenkins    Configure and validate the Jenkins controller from the ops-runner' \
 	  'configure-jenkins-worker Configure/register the dedicated Jenkins build worker' \
 	  'test-jenkins-worker Run the Java/.NET smoke pipeline on the dedicated Jenkins worker' \
@@ -27,6 +29,7 @@ help:
 	  'status-okd-nodes      Show Nova status/fixed IPs for OKD runtime machines' \
 	  'destroy-okd-nodes     Destroy only bootstrap + compact control-plane VMs' \
 	  'okd-node-console      Show Nova console: make okd-node-console NODE=okd-01' \
+	  'ssh-okd-node          SSH through okd-lb: make ssh-okd-node NODE=okd-01' \
 	  'prepare-openstack     Configure the host, run Kolla bootstrap-servers and prechecks' \
 	  'deploy-openstack      Pull images, deploy OpenStack and generate admin credentials' \
 	  'openstack-up          Run the complete prepare + deploy + validate chain' \
@@ -77,6 +80,14 @@ configure-edge-gateway:
 	@test -n "$(JENKINS_FLOATING_IP)" || (echo "Usage: make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x" >&2; exit 2)
 	./scripts/configure-edge-gateway.sh "$(JENKINS_FLOATING_IP)"
 
+
+configure-openstack-runtime:
+	./scripts/configure-openstack-runtime.sh
+
+configure-okd-client-access:
+	@test -n "$(OKD_LB_FLOATING_IP)" || (echo "Usage: make configure-okd-client-access OKD_LB_FLOATING_IP=192.168.250.x" >&2; exit 2)
+	./scripts/configure-okd-client-access.sh "$(OKD_LB_FLOATING_IP)"
+
 configure-okd-lb:
 	@test -n "$(OKD_LB_FLOATING_IP)" || (echo "Usage: make configure-okd-lb OKD_LB_FLOATING_IP=192.168.250.x" >&2; exit 2)
 	./scripts/configure-okd-lb.sh "$(OKD_LB_FLOATING_IP)"
@@ -113,6 +124,10 @@ destroy-okd-nodes:
 okd-node-console:
 	@test -n "$(NODE)" || (echo "Usage: make okd-node-console NODE=bootstrap|okd-01|okd-02|okd-03" >&2; exit 2)
 	./scripts/okd-nodes.sh console "$(NODE)"
+
+ssh-okd-node:
+	@test -n "$(NODE)" || (echo "Usage: make ssh-okd-node NODE=bootstrap|okd-01|okd-02|okd-03" >&2; exit 2)
+	./scripts/ssh-okd-node.sh "$(NODE)"
 
 prepare-openstack: bootstrap-ansible
 	./scripts/kolla.sh prepare

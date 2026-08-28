@@ -7,7 +7,8 @@ HOST_ADDR="{{ openstack_external_host_address }}"
 UPLINK_IF="{{ openstack_management_interface }}"
 EXTERNAL_CIDR="{{ openstack_external_cidr }}"
 AWS_MANAGEMENT_CIDR="{{ openstack_aws_management_cidr }}"
-SSH_PORT="{{ openstack_management_ssh_port }}"
+OPS_RUNNER_TCP_PORTS=({% for port in openstack_ops_runner_tcp_ports %}"{{ port }}" {% endfor %})
+OPS_RUNNER_UDP_PORTS=({% for port in openstack_ops_runner_udp_ports %}"{{ port }}" {% endfor %})
 EDGE_GATEWAY_CIDR="{{ openstack_edge_gateway_cidr }}"
 EDGE_BACKEND_TCP_PORTS=({% for port in openstack_edge_backend_tcp_ports %}"{{ port }}" {% endfor %})
 
@@ -25,18 +26,30 @@ iptables -C FORWARD -i "$HOST_IF" -o "$UPLINK_IF" -j ACCEPT 2>/dev/null \
 iptables -C FORWARD -i "$UPLINK_IF" -o "$HOST_IF" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
   || iptables -A FORWARD -i "$UPLINK_IF" -o "$HOST_IF" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
-# Allow the dedicated AWS management subnet to initiate SSH towards any
-# OpenStack floating IP. AWS security groups still restrict which EC2 can
-# reach this middlebox, while Neutron security groups enforce access again at
-# the workload port.
-iptables -C FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
-  -s "$AWS_MANAGEMENT_CIDR" -d "$EXTERNAL_CIDR" \
-  -p tcp --dport "$SSH_PORT" \
-  -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null \
-  || iptables -A FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
+# Allow the dedicated AWS management subnet to reach only the explicitly
+# approved OpenStack floating-IP management endpoints. This is the Linux
+# middlebox layer; AWS SGs and Neutron SGs enforce the same traffic separately.
+for management_port in "${OPS_RUNNER_TCP_PORTS[@]}"; do
+  iptables -C FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
     -s "$AWS_MANAGEMENT_CIDR" -d "$EXTERNAL_CIDR" \
-    -p tcp --dport "$SSH_PORT" \
-    -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+    -p tcp --dport "$management_port" \
+    -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
+      -s "$AWS_MANAGEMENT_CIDR" -d "$EXTERNAL_CIDR" \
+      -p tcp --dport "$management_port" \
+      -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+done
+
+for management_port in "${OPS_RUNNER_UDP_PORTS[@]}"; do
+  iptables -C FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
+    -s "$AWS_MANAGEMENT_CIDR" -d "$EXTERNAL_CIDR" \
+    -p udp --dport "$management_port" \
+    -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$UPLINK_IF" -o "$HOST_IF" \
+      -s "$AWS_MANAGEMENT_CIDR" -d "$EXTERNAL_CIDR" \
+      -p udp --dport "$management_port" \
+      -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+done
 
 # Allow only the dedicated edge gateway to initiate application traffic toward
 # explicitly approved OpenStack floating-IP backend ports.

@@ -1,0 +1,8 @@
+---
+- name: Converge OpenStack runtime administration guardrails
+  hosts: openstack_runtime_hosts
+  gather_facts: true
+  become: true
+
+  roles:
+    - role: openstack_runtime_admin
