@@ -1,11 +1,16 @@
 output "bootstrap" {
-  description = "Temporary bootstrap machine"
-  value = {
-    id       = openstack_compute_instance_v2.bootstrap.id
-    name     = openstack_compute_instance_v2.bootstrap.name
+  description = "Temporary bootstrap machine, or null after bootstrap retirement"
+  value = var.bootstrap_enabled ? {
+    id       = openstack_compute_instance_v2.bootstrap[0].id
+    name     = openstack_compute_instance_v2.bootstrap[0].name
     fixed_ip = var.bootstrap.ip
-    port_id  = openstack_networking_port_v2.bootstrap.id
-  }
+    port_id  = openstack_networking_port_v2.bootstrap[0].id
+  } : null
+}
+
+output "bootstrap_enabled" {
+  description = "Whether Terraform currently manages the temporary bootstrap machine"
+  value       = var.bootstrap_enabled
 }
 
 output "control_planes" {

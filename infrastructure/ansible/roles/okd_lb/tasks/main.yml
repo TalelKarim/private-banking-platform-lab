@@ -130,6 +130,7 @@
   register: okd_lb_bootstrap_dns
   changed_when: false
   failed_when: okd_lb_bootstrap_dns.stdout | trim != okd_bootstrap.ip
+  when: okd_bootstrap_backends_enabled | bool
 
 - name: Validate application wildcard DNS resolution against okd-lb
   ansible.builtin.command:

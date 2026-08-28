@@ -3,6 +3,8 @@
 # Ignition assets and those assets are reachable on okd-lb.
 
 resource "openstack_networking_port_v2" "bootstrap" {
+  count = var.bootstrap_enabled ? 1 : 0
+
   name           = "${var.bootstrap.name}-port"
   description    = "Temporary OKD bootstrap port"
   network_id     = var.network_id
@@ -25,6 +27,8 @@ resource "openstack_networking_port_v2" "bootstrap" {
 }
 
 resource "openstack_compute_instance_v2" "bootstrap" {
+  count = var.bootstrap_enabled ? 1 : 0
+
   name                = var.bootstrap.name
   image_id            = var.image_id
   flavor_id           = var.flavor_id
@@ -52,7 +56,7 @@ resource "openstack_compute_instance_v2" "bootstrap" {
   ]
 
   network {
-    port = openstack_networking_port_v2.bootstrap.id
+    port = openstack_networking_port_v2.bootstrap[0].id
   }
 }
 

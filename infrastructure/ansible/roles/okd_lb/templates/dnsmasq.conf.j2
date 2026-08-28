@@ -29,7 +29,9 @@ host-record=api-int.{{ okd_cluster_name }}.{{ okd_base_domain }},{{ okd_lb_ip }}
 address=/apps.{{ okd_cluster_name }}.{{ okd_base_domain }}/{{ okd_lb_ip }}
 
 # Installation/bootstrap and permanent compact control-plane nodes.
+{% if okd_bootstrap_backends_enabled | bool %}
 host-record={{ okd_bootstrap.name }}.{{ okd_cluster_name }}.{{ okd_base_domain }},{{ okd_bootstrap.ip }}
+{% endif %}
 {% for node in okd_control_planes %}
 host-record={{ node.name }}.{{ okd_cluster_name }}.{{ okd_base_domain }},{{ node.ip }}
 {% endfor %}

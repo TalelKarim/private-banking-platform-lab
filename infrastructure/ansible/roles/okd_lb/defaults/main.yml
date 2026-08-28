@@ -13,6 +13,10 @@ okd_lb_dns_unit_path: /etc/systemd/system/private-banking-okd-dns.service
 okd_lb_haproxy_service: haproxy
 okd_lb_nginx_service: nginx
 
+# Bootstrap participates in API/MCS load balancing only until
+# openshift-install reports bootstrap-complete.
+okd_bootstrap_backends_enabled: true
+
 okd_lb_ignition_root: /srv/okd/ignition
 okd_lb_nginx_site_name: okd-ignition
 okd_lb_nginx_sites_available_dir: /etc/nginx/sites-available

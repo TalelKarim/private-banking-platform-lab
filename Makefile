@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
@@ -25,7 +25,8 @@ help:
 	  'generate-okd-install-assets Generate fresh manifests, Ignition and auth assets' \
 	  'publish-okd-ignition Publish runtime bootstrap/master Ignition on okd-lb' \
 	  'prepare-okd-install-assets Generate + publish fresh runtime OKD install assets' \
-	  'create-okd-nodes      Create bootstrap + 3 compact SCOS control-plane VMs' \
+	  'create-okd-nodes      Create/converge bootstrap + 3 compact SCOS control-plane VMs' \
+	  'complete-okd-installation Wait bootstrap-complete, retire bootstrap, then wait install-complete' \
 	  'status-okd-nodes      Show Nova status/fixed IPs for OKD runtime machines' \
 	  'destroy-okd-nodes     Destroy only bootstrap + compact control-plane VMs' \
 	  'okd-node-console      Show Nova console: make okd-node-console NODE=okd-01' \
@@ -115,6 +116,9 @@ prepare-okd-install-assets: prepare-okd-installation-prereqs
 
 create-okd-nodes:
 	./scripts/okd-nodes.sh apply
+
+complete-okd-installation:
+	./scripts/complete-okd-installation.sh "$(OKD_LB_FLOATING_IP)"
 
 status-okd-nodes:
 	./scripts/okd-nodes.sh status

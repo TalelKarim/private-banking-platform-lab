@@ -28,6 +28,12 @@ variable "key_pair" {
   type        = string
 }
 
+variable "bootstrap_enabled" {
+  description = "Whether the temporary OKD bootstrap machine and port must exist"
+  type        = bool
+  default     = true
+}
+
 variable "bootstrap" {
   description = "Temporary bootstrap Nova machine definition"
   type = object({

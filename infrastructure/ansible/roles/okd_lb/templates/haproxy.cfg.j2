@@ -33,7 +33,9 @@ listen okd-api-6443
     http-check connect ssl
     http-check send meth GET uri /readyz ver HTTP/1.1 hdr Host api.{{ okd_cluster_name }}.{{ okd_base_domain }}
     http-check expect status 200
+{% if okd_bootstrap_backends_enabled | bool %}
     server {{ okd_bootstrap.name }} {{ okd_bootstrap.ip }}:6443 check inter 5s fall 3 rise 2 backup
+{% endif %}
 {% for node in okd_control_planes %}
     server {{ node.name }} {{ node.ip }}:6443 check inter 5s fall 3 rise 2
 {% endfor %}
@@ -42,7 +44,9 @@ listen okd-machine-config-22623
     bind {{ okd_lb_ip }}:22623
     mode tcp
     balance roundrobin
+{% if okd_bootstrap_backends_enabled | bool %}
     server {{ okd_bootstrap.name }} {{ okd_bootstrap.ip }}:22623 check inter 5s fall 3 rise 2 backup
+{% endif %}
 {% for node in okd_control_planes %}
     server {{ node.name }} {{ node.ip }}:22623 check inter 5s fall 3 rise 2
 {% endfor %}

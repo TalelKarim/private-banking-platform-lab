@@ -27,17 +27,18 @@ IGNITION_FETCH_INTERVAL_SECONDS=${IGNITION_FETCH_INTERVAL_SECONDS:-5}
 
 usage() {
   cat <<'EOF_USAGE'
-Usage: scripts/okd-nodes.sh <apply|status|destroy|console> [node]
+Usage: scripts/okd-nodes.sh <apply|status|retire-bootstrap|destroy|console> [node]
 
-  apply    Generate small verified Ignition stubs and create bootstrap + 3 compact control planes
-  status   Show the four Nova machines and their fixed addresses
-  destroy  Destroy only the runtime OKD bootstrap/control-plane Terraform layer
-  console  Show recent Nova console output for bootstrap, okd-01, okd-02 or okd-03
+  apply             Generate verified Ignition stubs and converge the runtime OKD machines
+  status            Show bootstrap (if present) and the three control planes
+  retire-bootstrap  Remove only the temporary bootstrap VM/port from runtime Terraform
+  destroy           Destroy the complete runtime OKD Terraform layer
+  console           Show recent Nova console output for bootstrap, okd-01, okd-02 or okd-03
 EOF_USAGE
 }
 
 case "$ACTION" in
-  apply|status|destroy|console) ;;
+  apply|status|retire-bootstrap|destroy|console) ;;
   -h|--help|help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -207,6 +208,40 @@ export TF_DATA_DIR
 mkdir -p "$TF_RUNTIME_DIR"
 chmod 0700 "$TF_RUNTIME_DIR"
 
+if [[ "$ACTION" == retire-bootstrap ]]; then
+  if [[ ! -s "$TF_STATE" || ! -s "$TF_VARS" ]]; then
+    if ! remote_openstack server show "$BOOTSTRAP_NAME" >/dev/null 2>&1; then
+      echo "Bootstrap is already absent and no runtime Terraform state needs convergence."
+      exit 0
+    fi
+    echo "Runtime Terraform state/variables are missing while bootstrap still exists." >&2
+    echo "Refusing an unmanaged Nova deletion; recover the runtime state first." >&2
+    exit 1
+  fi
+
+  tmp_vars=$(mktemp "$TF_RUNTIME_DIR/runtime.auto.tfvars.json.XXXXXX")
+  jq '.bootstrap_enabled = false' "$TF_VARS" > "$tmp_vars"
+  chmod 0600 "$tmp_vars"
+  mv "$tmp_vars" "$TF_VARS"
+
+  printf 'Retiring bootstrap through the existing runtime Terraform state...\n'
+  terraform -chdir="$TF_DIR" init -input=false >/dev/null
+  terraform -chdir="$TF_DIR" apply \
+    -input=false \
+    -auto-approve \
+    -state="$TF_STATE" \
+    -var-file="$TF_VARS"
+
+  if remote_openstack server show "$BOOTSTRAP_NAME" >/dev/null 2>&1; then
+    echo "Bootstrap Nova server still exists after Terraform convergence: $BOOTSTRAP_NAME" >&2
+    exit 1
+  fi
+
+  printf '\nBootstrap runtime resources retired; control-plane Terraform resources are preserved.\n'
+  show_status
+  exit 0
+fi
+
 if [[ "$ACTION" == destroy ]]; then
   if [[ ! -s "$TF_STATE" || ! -s "$TF_VARS" ]]; then
     echo "Runtime Terraform state/variables are absent; nothing managed locally to destroy." >&2
@@ -343,7 +378,17 @@ from pathlib import Path
 cfg = json.loads(os.environ["CONFIG_JSON"])
 stub_dir = Path(os.environ["STUB_DIR"])
 
+tfvars_path = Path(os.environ["TF_VARS"])
+bootstrap_enabled = True
+if tfvars_path.exists():
+    try:
+        previous = json.loads(tfvars_path.read_text(encoding="utf-8"))
+        bootstrap_enabled = bool(previous.get("bootstrap_enabled", True))
+    except (OSError, ValueError, TypeError):
+        bootstrap_enabled = True
+
 data = {
+    "bootstrap_enabled": bootstrap_enabled,
     "network_id": os.environ["NETWORK_ID"],
     "subnet_id": os.environ["SUBNET_ID"],
     "security_group_id": os.environ["SECURITY_GROUP_ID"],
@@ -364,11 +409,12 @@ data = {
     },
 }
 
-Path(os.environ["TF_VARS"]).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+tfvars_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PY
 chmod 0600 "$TF_VARS"
+BOOTSTRAP_ENABLED=$(jq -r '.bootstrap_enabled // true' "$TF_VARS")
 
-printf '\nCreating bootstrap + three compact control-plane VMs with Terraform...\n'
+printf '\nConverging runtime OKD machines with Terraform (bootstrap_enabled=%s)...\n' "$BOOTSTRAP_ENABLED"
 terraform -chdir="$TF_DIR" init -input=false >/dev/null
 terraform -chdir="$TF_DIR" apply \
   -input=false \
@@ -376,10 +422,15 @@ terraform -chdir="$TF_DIR" apply \
   -state="$TF_STATE" \
   -var-file="$TF_VARS"
 
-printf '\nWaiting for Nova to report all four SCOS machines ACTIVE...\n'
+RUNTIME_NODE_NAMES=("${CONTROL_PLANE_NAMES[@]}")
+if [[ "$BOOTSTRAP_ENABLED" == true ]]; then
+  RUNTIME_NODE_NAMES=("$BOOTSTRAP_NAME" "${RUNTIME_NODE_NAMES[@]}")
+fi
+
+printf '\nWaiting for managed SCOS machines to become ACTIVE in Nova...\n'
 for attempt in $(seq 1 60); do
   all_active=true
-  for name in "$BOOTSTRAP_NAME" "${CONTROL_PLANE_NAMES[@]}"; do
+  for name in "${RUNTIME_NODE_NAMES[@]}"; do
     status=$(remote_openstack server show "$name" -f value -c status 2>/dev/null || true)
     [[ "$status" == ACTIVE ]] || all_active=false
   done
@@ -387,7 +438,7 @@ for attempt in $(seq 1 60); do
   sleep 5
 done
 
-for name in "$BOOTSTRAP_NAME" "${CONTROL_PLANE_NAMES[@]}"; do
+for name in "${RUNTIME_NODE_NAMES[@]}"; do
   status=$(remote_openstack server show "$name" -f value -c status 2>/dev/null || true)
   if [[ "$status" != ACTIVE ]]; then
     echo "Nova server did not become ACTIVE: $name (status=${status:-missing})" >&2
@@ -419,7 +470,9 @@ fetch_seen() {
 
 for attempt in $(seq 1 "$IGNITION_FETCH_ATTEMPTS"); do
   all_fetched=true
-  fetch_seen "$BOOTSTRAP_IP" /bootstrap.ign || all_fetched=false
+  if [[ "$BOOTSTRAP_ENABLED" == true ]]; then
+    fetch_seen "$BOOTSTRAP_IP" /bootstrap.ign || all_fetched=false
+  fi
   while IFS=$'\t' read -r name ip; do
     fetch_seen "$ip" /master.ign || all_fetched=false
   done < <(jq -r '.okd_control_planes[] | [.name, .ip] | @tsv' <<<"$CONFIG_JSON")
@@ -441,11 +494,19 @@ if [[ "${all_fetched:-false}" != true ]]; then
   exit 1
 fi
 
-printf '\nIgnition HTTP handoff observed for all four machines:\n'
-printf '  %-12s %s -> %s\n' "$BOOTSTRAP_NAME" "$BOOTSTRAP_IP" '/bootstrap.ign 200'
+printf '\nIgnition HTTP handoff observed for all managed runtime machines:\n'
+if [[ "$BOOTSTRAP_ENABLED" == true ]]; then
+  printf '  %-12s %s -> %s\n' "$BOOTSTRAP_NAME" "$BOOTSTRAP_IP" '/bootstrap.ign 200'
+else
+  printf '  %-12s %s\n' "$BOOTSTRAP_NAME" 'RETIRED (not recreated)'
+fi
 while IFS=$'\t' read -r name ip; do
   printf '  %-12s %s -> %s\n' "$name" "$ip" '/master.ign 200'
 done < <(jq -r '.okd_control_planes[] | [.name, .ip] | @tsv' <<<"$CONFIG_JSON")
 
-printf '\nOKD runtime machines are BOOTSTRAPPING.\n'
-printf 'The next phase waits for bootstrap-complete, removes bootstrap, then waits for install-complete.\n'
+if [[ "$BOOTSTRAP_ENABLED" == true ]]; then
+  printf '\nOKD runtime machines are BOOTSTRAPPING.\n'
+  printf 'Next: make complete-okd-installation\n'
+else
+  printf '\nOKD runtime machines converged with bootstrap already retired.\n'
+fi
