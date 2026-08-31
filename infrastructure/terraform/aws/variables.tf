@@ -253,7 +253,7 @@ variable "lab_ssh_private_key_ssm_parameter_name" {
 variable "cloud_browser_enabled" {
   description = "Create the temporary SSM-managed Windows cloud browser. Keep false when it is not needed to avoid Windows/EIP cost."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "cloud_browser_instance_type" {
