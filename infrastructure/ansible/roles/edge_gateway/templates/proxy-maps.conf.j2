@@ -1,4 +1,9 @@
 # Managed by Ansible - private-banking-platform-lab
+# Long OpenShift route hostnames (for example the integrated registry route)
+# exceed Nginx's default 64-byte server-name hash bucket on this Ubuntu image.
+# conf.d is included from the http{} context, where this directive is valid.
+server_names_hash_bucket_size {{ edge_nginx_server_names_hash_bucket_size }};
+
 # Preserve the original public scheme injected by the ALB, while keeping local
 # direct health/debug requests functional when X-Forwarded-Proto is absent.
 map $http_x_forwarded_proto $private_banking_forwarded_proto {
