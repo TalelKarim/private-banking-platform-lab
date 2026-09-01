@@ -194,6 +194,17 @@ variable "postgresql_app_password_ssm_parameter_name" {
   }
 }
 
+variable "cinder_csi_password_ssm_parameter_name" {
+  description = "SSM SecureString used at runtime for the dedicated OpenStack Cinder CSI service user"
+  type        = string
+  default     = "/private-banking-platform-lab/openshift/cinder-csi-password"
+
+  validation {
+    condition     = startswith(var.cinder_csi_password_ssm_parameter_name, "/") && length(var.cinder_csi_password_ssm_parameter_name) > 1
+    error_message = "cinder_csi_password_ssm_parameter_name must be an absolute SSM parameter path."
+  }
+}
+
 variable "edge_gateway_instance_type" {
   description = "EC2 instance type used by the HTTP/HTTPS edge gateway"
   type        = string

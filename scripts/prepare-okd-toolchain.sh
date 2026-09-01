@@ -12,9 +12,10 @@ read_config_value() {
 
 OKD_VERSION=${OKD_VERSION:-$(read_config_value okd_release_version)}
 OKD_ARCHITECTURE=${OKD_ARCHITECTURE:-$(read_config_value okd_architecture)}
+HELM_VERSION=${HELM_VERSION:-$(read_config_value okd_helm_version)}
 
-if [[ -z "$OKD_VERSION" || -z "$OKD_ARCHITECTURE" ]]; then
-  echo "Missing okd_release_version/okd_architecture in $CLUSTER_CONFIG" >&2
+if [[ -z "$OKD_VERSION" || -z "$OKD_ARCHITECTURE" || -z "$HELM_VERSION" ]]; then
+  echo "Missing okd_release_version/okd_architecture/okd_helm_version in $CLUSTER_CONFIG" >&2
   exit 1
 fi
 
@@ -97,6 +98,42 @@ sudo ln -sfn "$INSTALLER_BIN" /usr/local/bin/openshift-install
 sudo ln -sfn "$OC_BIN" /usr/local/bin/oc
 sudo ln -sfn "$KUBECTL_BIN" /usr/local/bin/kubectl
 
+HELM_VERSION_DIR="$INSTALL_ROOT/helm/$HELM_VERSION"
+HELM_BIN="$HELM_VERSION_DIR/helm"
+
+if [[ ! -x "$HELM_BIN" ]] || ! "$HELM_BIN" version --short 2>/dev/null | grep -Fq "v$HELM_VERSION"; then
+  HELM_ARCHIVE="helm-v${HELM_VERSION}-linux-amd64.tar.gz"
+  HELM_BASE_URL="https://get.helm.sh"
+  HELM_TMP_DIR=$(mktemp -d /tmp/private-banking-helm.XXXXXX)
+
+  echo "Downloading pinned Helm: v$HELM_VERSION"
+  curl -fsSL --retry 3 --retry-delay 2 -o "$HELM_TMP_DIR/$HELM_ARCHIVE" "$HELM_BASE_URL/$HELM_ARCHIVE"
+  curl -fsSL --retry 3 --retry-delay 2 -o "$HELM_TMP_DIR/$HELM_ARCHIVE.sha256sum" "$HELM_BASE_URL/$HELM_ARCHIVE.sha256sum"
+
+  expected_checksum=$(awk '{print $1; exit}' "$HELM_TMP_DIR/$HELM_ARCHIVE.sha256sum")
+  actual_checksum=$(sha256sum "$HELM_TMP_DIR/$HELM_ARCHIVE" | awk '{print $1}')
+  if [[ -z "$expected_checksum" || "$actual_checksum" != "$expected_checksum" ]]; then
+    echo "Helm checksum verification failed for $HELM_ARCHIVE" >&2
+    rm -rf "$HELM_TMP_DIR"
+    exit 1
+  fi
+
+  tar -xzf "$HELM_TMP_DIR/$HELM_ARCHIVE" -C "$HELM_TMP_DIR"
+  [[ -x "$HELM_TMP_DIR/linux-amd64/helm" ]] || { echo "Helm binary missing from archive" >&2; rm -rf "$HELM_TMP_DIR"; exit 1; }
+
+  sudo install -d -m 0755 "$HELM_VERSION_DIR"
+  sudo install -m 0755 "$HELM_TMP_DIR/linux-amd64/helm" "$HELM_BIN"
+  rm -rf "$HELM_TMP_DIR"
+fi
+
+sudo ln -sfn "$HELM_BIN" /usr/local/bin/helm
+
+if ! helm version --short | grep -Fq "v$HELM_VERSION"; then
+  echo "helm does not match pinned version v$HELM_VERSION" >&2
+  helm version --short >&2 || true
+  exit 1
+fi
+
 if ! openshift-install version | grep -Fq "$OKD_VERSION"; then
   echo "openshift-install does not match pinned release $OKD_VERSION" >&2
   openshift-install version >&2 || true
@@ -107,3 +144,4 @@ printf '\nPinned OKD toolchain ready:\n'
 openshift-install version | sed -n '1,4p'
 printf 'oc:      %s\n' "$(command -v oc)"
 printf 'kubectl: %s\n' "$(command -v kubectl)"
+printf 'helm:    %s (%s)\n' "$(command -v helm)" "$(helm version --short)"

@@ -1,0 +1,6 @@
+# Managed by Ansible - private-banking-platform-lab
+# The AWS lab-host is a persistent Spot instance configured with interruption
+# behavior "stop". When the compute host comes back, resume Nova guests that
+# were running before the host shutdown instead of leaving the whole lab SHUTOFF.
+[DEFAULT]
+resume_guests_state_on_host_boot = true

@@ -1,13 +1,14 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime recover-openstack-guests configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation configure-openshift-storage configure-openshift-registry cleanup-openshift-storage status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
 	  'bootstrap-ansible     Install the local Ansible control environment and configure the host' \
 	  'configure-lab         Discover runtime addresses and converge all lab services from ops-runner' \
-	  'configure-openstack-runtime Converge OpenStack quotas + routed management forwarding' \
+	  'configure-openstack-runtime Converge OpenStack quotas + routing + Nova guest recovery' \
+	  'recover-openstack-guests Start known lab guests after lab-host reboot/Spot stop' \
 	  'configure-okd-client-access Configure ops-runner API resolution + SSH jump aliases' \
 	  'configure-jenkins    Configure and validate the Jenkins controller from the ops-runner' \
 	  'configure-jenkins-worker Configure/register the dedicated Jenkins build worker' \
@@ -19,7 +20,7 @@ help:
 	  'restore-postgresql   Restore BACKUP into TARGET_DB; live DB requires explicit CONFIRM' \
 	  'configure-edge-gateway Configure Nginx ingress on the edge gateway from the ops-runner' \
 	  'configure-okd-lb      Configure OKD DNS, HAProxy and Ignition HTTP on okd-lb' \
-	  'prepare-okd-toolchain Install the pinned openshift-install, oc and kubectl on ops-runner' \
+	  'prepare-okd-toolchain Install pinned openshift-install, oc, kubectl and Helm on ops-runner' \
 	  'prepare-okd-image     Import the installer-matched SCOS OpenStack image into Glance' \
 	  'prepare-okd-installation-prereqs Prepare OKD tools + matching Glance boot image' \
 	  'generate-okd-install-assets Generate fresh manifests, Ignition and auth assets' \
@@ -27,6 +28,9 @@ help:
 	  'prepare-okd-install-assets Generate + publish fresh runtime OKD install assets' \
 	  'create-okd-nodes      Create/converge bootstrap + 3 compact SCOS control-plane VMs' \
 	  'complete-okd-installation Wait bootstrap-complete, retire bootstrap, then wait install-complete' \
+	  'configure-openshift-storage Install Cinder CSI + default StorageClass + E2E PVC smoke test' \
+	  'configure-openshift-registry Put integrated registry on persistent Cinder-backed storage' \
+	  'cleanup-openshift-storage Reclaim registry/Cinder volumes before OKD VM destroy' \
 	  'status-okd-nodes      Show Nova status/fixed IPs for OKD runtime machines' \
 	  'destroy-okd-nodes     Destroy only bootstrap + compact control-plane VMs' \
 	  'okd-node-console      Show Nova console: make okd-node-console NODE=okd-01' \
@@ -86,6 +90,9 @@ configure-edge-gateway:
 configure-openstack-runtime:
 	./scripts/configure-openstack-runtime.sh
 
+recover-openstack-guests:
+	./scripts/recover-openstack-guests.sh
+
 configure-okd-client-access:
 	@test -n "$(OKD_LB_FLOATING_IP)" || (echo "Usage: make configure-okd-client-access OKD_LB_FLOATING_IP=192.168.250.x" >&2; exit 2)
 	./scripts/configure-okd-client-access.sh "$(OKD_LB_FLOATING_IP)"
@@ -119,6 +126,15 @@ create-okd-nodes:
 
 complete-okd-installation:
 	./scripts/complete-okd-installation.sh "$(OKD_LB_FLOATING_IP)"
+
+configure-openshift-storage:
+	./scripts/configure-openshift-storage.sh
+
+configure-openshift-registry:
+	./scripts/configure-openshift-registry.sh
+
+cleanup-openshift-storage:
+	./scripts/cleanup-openshift-storage.sh
 
 status-okd-nodes:
 	./scripts/okd-nodes.sh status

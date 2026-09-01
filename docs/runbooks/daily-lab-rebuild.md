@@ -12,7 +12,7 @@ The lab is intentionally destroyed when it is not being used to reduce AWS/EBS c
 make configure-lab
 ```
 
-`configure-lab` is the single configuration/convergence entry point. It discovers the Jenkins controller, worker and PostgreSQL Floating IPs, configures the controller, registers and configures the dedicated worker, waits for the worker Remoting channel to be online, configures PostgreSQL on its Cinder-backed data volume, installs/enables the logical-backup timer, validates database authentication, then configures the edge gateway/Nginx. Future workload playbooks must continue to be added behind this target so the daily operator workflow stays one command.
+`configure-lab` is the single configuration/convergence entry point. It first recovers known Nova guests if the Spot-backed `lab-host` rebooted, then converges OpenStack runtime guardrails, Jenkins, PostgreSQL, the edge gateway and the compact OKD cluster. After OKD is healthy it installs/reconciles OpenStack Cinder CSI, the default `cinder-standard` StorageClass and the persistent OpenShift integrated-registry PVC, including a real PVC attachment/write smoke test. Future workload playbooks must continue to be added behind this target so the daily operator workflow stays one command.
 
 ## Expected operator workflow
 
@@ -69,6 +69,9 @@ Jenkins controller       READY
 Jenkins worker           ONLINE
 PostgreSQL               READY
 Edge gateway             READY
+Cinder CSI               READY
+StorageClass             cinder-standard (default)
+Image registry storage   PERSISTENT / CINDER
 Controller FIP           192.168.250.x
 Worker FIP               192.168.250.y
 PostgreSQL FIP           192.168.250.z
@@ -76,3 +79,7 @@ LAB CONFIGURATION READY
 ```
 
 At that point Jenkins must be reachable through the edge gateway, the controller service must be active, `jenkins-agent-01` must be online, and PostgreSQL must be serving the `portfolio` database from its Cinder-backed data directory. Use `make test-jenkins-worker` when you want to execute the Java/.NET infrastructure smoke pipeline.
+
+## Storage-aware OKD teardown
+
+`make destroy-okd-nodes` now cleans the integrated registry PVC and waits for CSI/Cinder volume reclamation before destroying the compact OKD VMs. If another Cinder-backed PV remains, the command stops instead of risking an orphaned attachment. See `docs/runbooks/openshift-storage-registry-foundation.md`.

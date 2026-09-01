@@ -34,3 +34,8 @@ openstack_runtime_kolla_inventory: /data/openstack/kolla/inventory/all-in-one
 openstack_runtime_kolla_config_dir: /etc/kolla
 openstack_runtime_kolla_collections_path: /opt/kolla-venv/collections
 openstack_runtime_horizon_public_fqdn: "cloud.{{ okd_base_domain }}"
+
+# Persistent Spot lab-host recovery: ask Nova to restart guests that were
+# running before the compute host was stopped/rebooted.
+openstack_runtime_nova_compute_override_dir: "{{ openstack_runtime_kolla_config_dir }}/config/nova"
+openstack_runtime_nova_compute_override_file: "{{ openstack_runtime_nova_compute_override_dir }}/nova-compute.conf"

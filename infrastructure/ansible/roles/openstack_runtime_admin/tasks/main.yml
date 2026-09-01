@@ -246,6 +246,38 @@
       - openstack_runtime_converged_quota.ram | int == openstack_runtime_quota_ram_mb | int
     fail_msg: "OpenStack compute quotas did not converge to the lab values."
 
+- name: Ensure Nova custom configuration directory exists
+  ansible.builtin.file:
+    path: "{{ openstack_runtime_nova_compute_override_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure Nova guest recovery after lab-host reboot
+  ansible.builtin.template:
+    src: nova-compute-lab-recovery.conf.j2
+    dest: "{{ openstack_runtime_nova_compute_override_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: openstack_runtime_nova_recovery_settings
+
+- name: Reconfigure Nova when guest recovery settings change
+  ansible.builtin.command:
+    argv:
+      - "{{ openstack_runtime_kolla_venv }}/bin/kolla-ansible"
+      - reconfigure
+      - -i
+      - "{{ openstack_runtime_kolla_inventory }}"
+      - --tags
+      - nova
+  environment:
+    PATH: "{{ openstack_runtime_kolla_venv }}/bin:{{ ansible_env.PATH }}"
+    ANSIBLE_COLLECTIONS_PATH: "{{ openstack_runtime_kolla_collections_path }}:{{ ansible_env.HOME }}/.ansible/collections:/usr/share/ansible/collections"
+  when: openstack_runtime_nova_recovery_settings.changed
+  changed_when: true
+
 - name: Ensure Horizon custom configuration directory exists
   ansible.builtin.file:
     path: "{{ openstack_runtime_kolla_config_dir }}/config/horizon"
@@ -287,3 +319,4 @@
       - "forward.tcp={{ openstack_runtime_tcp_ports | join(',') }}"
       - "forward.udp={{ openstack_runtime_udp_ports | join(',') }}"
       - "edge.forward.tcp={{ openstack_runtime_edge_tcp_ports | join(',') }}"
+      - "nova.resume_guests_state_on_host_boot=true"

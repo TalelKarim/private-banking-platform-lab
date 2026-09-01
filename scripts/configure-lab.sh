@@ -25,97 +25,145 @@ printf '%s\n' '============================================================'
 printf '%s\n' ' Private Banking Platform Lab - Configuration convergence'
 printf '%s\n' '============================================================'
 
+# A Spot stop/start of the nested EC2 compute host leaves Nova guests SHUTOFF by
+# default. Recover the known lab guests first; the Ansible runtime convergence
+# later also installs the persistent Nova auto-resume setting for future boots.
+printf '[1/19] Recovering known OpenStack guests after any lab-host reboot/Spot stop...\n'
+"$ROOT_DIR/scripts/recover-openstack-guests.sh"
+
 if [[ -z "$JENKINS_FLOATING_IP" ]]; then
-  printf '[1/15] Discovering Jenkins controller floating IP from OpenStack...\n'
+  printf '[2/19] Discovering Jenkins controller floating IP from OpenStack...\n'
   JENKINS_FLOATING_IP=$(
     "$ROOT_DIR/scripts/discover-openstack-floating-ip.sh" "$JENKINS_CONTROLLER_SERVER_NAME"
   )
   printf '      Jenkins controller floating IP: %s\n' "$JENKINS_FLOATING_IP"
 else
-  printf '[1/15] Using Jenkins controller floating IP override: %s\n' "$JENKINS_FLOATING_IP"
+  printf '[2/19] Using Jenkins controller floating IP override: %s\n' "$JENKINS_FLOATING_IP"
 fi
 
 if [[ -z "$JENKINS_WORKER_FLOATING_IP" ]]; then
-  printf '[2/15] Discovering Jenkins worker floating IP from OpenStack...\n'
+  printf '[3/19] Discovering Jenkins worker floating IP from OpenStack...\n'
   JENKINS_WORKER_FLOATING_IP=$(
     "$ROOT_DIR/scripts/discover-openstack-floating-ip.sh" "$JENKINS_WORKER_SERVER_NAME"
   )
   printf '      Jenkins worker floating IP: %s\n' "$JENKINS_WORKER_FLOATING_IP"
 else
-  printf '[2/15] Using Jenkins worker floating IP override: %s\n' "$JENKINS_WORKER_FLOATING_IP"
+  printf '[3/19] Using Jenkins worker floating IP override: %s\n' "$JENKINS_WORKER_FLOATING_IP"
 fi
 
 if [[ -z "$POSTGRESQL_FLOATING_IP" ]]; then
-  printf '[3/15] Discovering PostgreSQL floating IP from OpenStack...\n'
+  printf '[4/19] Discovering PostgreSQL floating IP from OpenStack...\n'
   POSTGRESQL_FLOATING_IP=$(
     "$ROOT_DIR/scripts/discover-openstack-floating-ip.sh" "$POSTGRESQL_SERVER_NAME"
   )
   printf '      PostgreSQL floating IP: %s\n' "$POSTGRESQL_FLOATING_IP"
 else
-  printf '[3/15] Using PostgreSQL floating IP override: %s\n' "$POSTGRESQL_FLOATING_IP"
+  printf '[4/19] Using PostgreSQL floating IP override: %s\n' "$POSTGRESQL_FLOATING_IP"
 fi
 
 if [[ -z "$OKD_LB_FLOATING_IP" ]]; then
-  printf '[4/15] Discovering okd-lb floating IP from OpenStack...\n'
+  printf '[5/19] Discovering okd-lb floating IP from OpenStack...\n'
   OKD_LB_FLOATING_IP=$(
     "$ROOT_DIR/scripts/discover-openstack-floating-ip.sh" "$OKD_LB_SERVER_NAME"
   )
   printf '      okd-lb floating IP: %s\n' "$OKD_LB_FLOATING_IP"
 else
-  printf '[4/15] Using okd-lb floating IP override: %s\n' "$OKD_LB_FLOATING_IP"
+  printf '[5/19] Using okd-lb floating IP override: %s\n' "$OKD_LB_FLOATING_IP"
 fi
 
-printf '[5/15] Converging OpenStack quotas and routed management forwarding with Ansible...\n'
+printf '[6/19] Converging OpenStack quotas, routed management forwarding and Nova guest recovery...\n'
 "$ROOT_DIR/scripts/configure-openstack-runtime.sh"
 
-printf '[6/15] Converging Jenkins controller with Ansible...\n'
+wait_for_ssh() {
+  local label=$1
+  local host=$2
+  local attempts=${SSH_READY_ATTEMPTS:-60}
+  local interval=${SSH_READY_INTERVAL_SECONDS:-3}
+
+  for attempt in $(seq 1 "$attempts"); do
+    if timeout 2 bash -c "</dev/tcp/$host/22" 2>/dev/null; then
+      printf '      %-22s SSH READY (%s:22)\n' "$label" "$host"
+      return 0
+    fi
+    sleep "$interval"
+  done
+
+  echo "$label did not expose SSH on $host:22 after Nova reported ACTIVE." >&2
+  return 1
+}
+
+printf '      Waiting for recovered workload operating systems to expose SSH...\n'
+wait_for_ssh 'Jenkins controller' "$JENKINS_FLOATING_IP"
+wait_for_ssh 'Jenkins worker' "$JENKINS_WORKER_FLOATING_IP"
+wait_for_ssh 'PostgreSQL' "$POSTGRESQL_FLOATING_IP"
+wait_for_ssh 'okd-lb' "$OKD_LB_FLOATING_IP"
+
+printf '[7/19] Converging Jenkins controller with Ansible...\n'
 "$ROOT_DIR/scripts/configure-jenkins.sh" "$JENKINS_FLOATING_IP"
 
-printf '[7/15] Converging Jenkins worker and Remoting channel with Ansible...\n'
+printf '[8/19] Converging Jenkins worker and Remoting channel with Ansible...\n'
 "$ROOT_DIR/scripts/configure-jenkins-worker.sh" \
   "$JENKINS_FLOATING_IP" \
   "$JENKINS_WORKER_FLOATING_IP"
 
-printf '[8/15] Converging PostgreSQL and its Cinder-backed data layer with Ansible...\n'
+printf '[9/19] Converging PostgreSQL and its Cinder-backed data layer with Ansible...\n'
 "$ROOT_DIR/scripts/configure-postgresql.sh" "$POSTGRESQL_FLOATING_IP"
 
-printf '[9/15] Converging edge gateway with Ansible...\n'
+printf '[10/19] Converging edge gateway with Ansible...\n'
 "$ROOT_DIR/scripts/configure-edge-gateway.sh" "$JENKINS_FLOATING_IP" "$OKD_LB_FLOATING_IP"
 
-printf '[10/15] Converging OKD DNS/load-balancer foundation with Ansible...\n'
+printf '[11/19] Converging OKD DNS/load-balancer foundation with Ansible...\n'
 "$ROOT_DIR/scripts/configure-okd-lb.sh" "$OKD_LB_FLOATING_IP"
 
-printf '[11/15] Configuring ops-runner OKD API resolution and SSH jump aliases...\n'
+printf '[12/19] Configuring ops-runner OKD API resolution and SSH jump aliases...\n'
 "$ROOT_DIR/scripts/configure-okd-client-access.sh" "$OKD_LB_FLOATING_IP"
 
-printf '[12/15] Preparing pinned OKD installer tooling and matching SCOS Glance image...\n'
+printf '[13/19] Preparing pinned OKD installer tooling, Helm and matching SCOS Glance image...\n'
 "$ROOT_DIR/scripts/prepare-okd-installation-prereqs.sh"
 
-printf '[13/15] Generating and publishing fresh OKD installation assets...\n'
+printf '[14/19] Generating and publishing fresh OKD installation assets...\n'
 "$ROOT_DIR/scripts/prepare-okd-install-assets.sh" "$OKD_LB_FLOATING_IP"
 
-printf '[14/15] Creating OKD bootstrap + compact control-plane VMs...\n'
+printf '[15/19] Creating/converging OKD bootstrap + compact control-plane VMs...\n'
 "$ROOT_DIR/scripts/okd-nodes.sh" apply
 
-printf '[15/15] Completing OKD installation and retiring bootstrap...\n'
+printf '[16/19] Completing OKD installation and retiring bootstrap...\n'
 "$ROOT_DIR/scripts/complete-okd-installation.sh" "$OKD_LB_FLOATING_IP"
 
+printf '[17/19] Installing/converging OpenStack Cinder CSI + default StorageClass...\n'
+"$ROOT_DIR/scripts/configure-openshift-storage.sh"
+
+printf '[18/19] Configuring the integrated OpenShift registry on persistent Cinder storage...\n'
+"$ROOT_DIR/scripts/configure-openshift-registry.sh"
+
+printf '[19/19] Final OpenShift storage/registry health validation...\n'
+export KUBECONFIG="$ROOT_DIR/.runtime/openshift/install/auth/kubeconfig"
+oc get nodes
+oc get csidriver cinder.csi.openstack.org
+oc get storageclass
+oc get pvc image-registry-storage -n openshift-image-registry
+oc get clusteroperator image-registry
+
 printf '\n%s\n' '------------------------------------------------------------'
-printf '%-24s %s\n' 'Jenkins controller' 'READY'
-printf '%-24s %s\n' 'Jenkins worker' 'ONLINE'
-printf '%-24s %s\n' 'PostgreSQL' 'READY'
-printf '%-24s %s\n' 'Edge gateway' 'READY'
-printf '%-24s %s\n' 'OKD DNS / LB' 'READY'
-printf '%-24s %s\n' 'OKD install prereqs' 'READY'
-printf '%-24s %s\n' 'OKD install assets' 'READY'
-printf '%-24s %s\n' 'OKD cluster' 'INSTALLED'
-printf '%-24s %s\n' 'OKD bootstrap' 'RETIRED'
-printf '%-24s %s\n' 'Controller FIP' "$JENKINS_FLOATING_IP"
-printf '%-24s %s\n' 'Worker FIP' "$JENKINS_WORKER_FLOATING_IP"
-printf '%-24s %s\n' 'PostgreSQL FIP' "$POSTGRESQL_FLOATING_IP"
-printf '%-24s %s\n' 'okd-lb FIP' "$OKD_LB_FLOATING_IP"
-printf '%-24s %s\n' 'Jenkins URL' "https://jenkins.$LAB_BASE_DOMAIN"
-printf '%-24s %s\n' 'Horizon URL' "https://cloud.$LAB_BASE_DOMAIN"
-printf '%-24s %s\n' 'OpenShift Console' "https://console-openshift-console.apps.$OKD_CLUSTER_NAME.$LAB_BASE_DOMAIN"
+printf '%-28s %s\n' 'Jenkins controller' 'READY'
+printf '%-28s %s\n' 'Jenkins worker' 'ONLINE'
+printf '%-28s %s\n' 'PostgreSQL' 'READY'
+printf '%-28s %s\n' 'Edge gateway' 'READY'
+printf '%-28s %s\n' 'OKD DNS / LB' 'READY'
+printf '%-28s %s\n' 'OKD install prereqs' 'READY'
+printf '%-28s %s\n' 'OKD install assets' 'READY'
+printf '%-28s %s\n' 'OKD cluster' 'INSTALLED'
+printf '%-28s %s\n' 'OKD bootstrap' 'RETIRED'
+printf '%-28s %s\n' 'Cinder CSI' 'READY'
+printf '%-28s %s\n' 'StorageClass' 'cinder-standard (default)'
+printf '%-28s %s\n' 'Image registry storage' 'PERSISTENT / CINDER'
+printf '%-28s %s\n' 'Registry external Route' 'DISABLED (phase 2)'
+printf '%-28s %s\n' 'Controller FIP' "$JENKINS_FLOATING_IP"
+printf '%-28s %s\n' 'Worker FIP' "$JENKINS_WORKER_FLOATING_IP"
+printf '%-28s %s\n' 'PostgreSQL FIP' "$POSTGRESQL_FLOATING_IP"
+printf '%-28s %s\n' 'okd-lb FIP' "$OKD_LB_FLOATING_IP"
+printf '%-28s %s\n' 'Jenkins URL' "https://jenkins.$LAB_BASE_DOMAIN"
+printf '%-28s %s\n' 'Horizon URL' "https://cloud.$LAB_BASE_DOMAIN"
+printf '%-28s %s\n' 'OpenShift Console' "https://console-openshift-console.apps.$OKD_CLUSTER_NAME.$LAB_BASE_DOMAIN"
 printf '%s\n' '------------------------------------------------------------'
 printf '%s\n' 'LAB CONFIGURATION READY'

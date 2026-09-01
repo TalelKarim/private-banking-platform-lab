@@ -249,6 +249,10 @@ if [[ "$ACTION" == destroy ]]; then
     exit 0
   fi
 
+  if [[ "${SKIP_OPENSHIFT_STORAGE_CLEANUP:-false}" != "true" ]]; then
+    "$ROOT_DIR/scripts/cleanup-openshift-storage.sh"
+  fi
+
   terraform -chdir="$TF_DIR" init -input=false >/dev/null
   terraform -chdir="$TF_DIR" destroy \
     -input=false \

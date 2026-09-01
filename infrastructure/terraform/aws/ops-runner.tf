@@ -109,6 +109,26 @@ resource "aws_iam_role_policy" "ops_runner_postgresql_app_password" {
   })
 }
 
+resource "aws_iam_role_policy" "ops_runner_cinder_csi_password" {
+  name = "${var.project_name}-ops-runner-cinder-csi-password"
+  role = aws_iam_role.ops_runner.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:PutParameter"
+        ]
+        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${var.cinder_csi_password_ssm_parameter_name}"
+      }
+    ]
+  })
+}
+
 resource "aws_security_group" "ops_runner" {
   name_prefix = "${var.project_name}-ops-runner-"
   description = "Security group for the Terraform and Ansible administration runner"
@@ -213,6 +233,7 @@ resource "aws_instance" "ops_runner" {
     aws_iam_role_policy.ops_runner_workload_ssh_key,
     aws_iam_role_policy.ops_runner_jenkins_admin_password,
     aws_iam_role_policy.ops_runner_postgresql_app_password,
+    aws_iam_role_policy.ops_runner_cinder_csi_password,
     aws_iam_role_policy.ops_runner_lab_ssh_key,
     aws_ssm_parameter.lab_ssh_private_key,
     local_sensitive_file.ssh_private_key

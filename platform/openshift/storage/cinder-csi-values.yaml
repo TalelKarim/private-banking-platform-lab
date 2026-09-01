@@ -1,0 +1,27 @@
+# Cinder CSI is installed from the pinned cloud-provider-openstack Helm chart.
+# The OpenStack credential itself is created at runtime as a Kubernetes Secret
+# by scripts/configure-openshift-storage.sh and never committed to Git.
+secret:
+  enabled: true
+  create: false
+  hostMount: false
+  name: cinder-csi-cloud-config
+
+# The upstream chart defaults to an /etc/cacert hostPath because many public
+# OpenStack clouds use a private CA. This nested lab exposes its Kolla APIs over
+# HTTP on the internal network, so do not require a non-existent host CA path.
+csi:
+  plugin:
+    volumes: []
+    volumeMounts:
+      - name: cloud-config
+        mountPath: /etc/config
+        readOnly: true
+    controllerPlugin:
+      replicas: 1
+
+# Keep StorageClass ownership in this repository instead of accepting the two
+# generic chart classes. This gives workloads one stable contract:
+# storageClassName: cinder-standard.
+storageClass:
+  enabled: false

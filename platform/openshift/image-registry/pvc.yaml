@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: image-registry-storage
+  namespace: openshift-image-registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: cinder-standard
+  resources:
+    requests:
+      # Replaced at runtime from cluster-config.yml by configure-openshift-registry.sh.
+      storage: 20Gi

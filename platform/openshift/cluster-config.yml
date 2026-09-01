@@ -42,3 +42,19 @@ okd_control_planes:
     ip: 10.20.0.22
   - name: okd-03
     ip: 10.20.0.23
+
+# Reusable OpenShift storage/registry foundation. The cluster is installed as
+# platform:none, so the OpenStack-specific CSI integration is converged after
+# installation instead of being auto-installed by the OpenShift installer.
+okd_helm_version: 3.20.1
+okd_cinder_csi_chart_version: 2.35.0
+okd_cinder_storage_class: cinder-standard
+okd_cinder_openstack_project: admin
+okd_cinder_openstack_user: okd-cinder-csi
+okd_cinder_openstack_role: member
+okd_openstack_region: RegionOne
+okd_cinder_password_ssm_parameter: /private-banking-platform-lab/openshift/cinder-csi-password
+
+# Lab-sized registry storage. Cinder is block/RWO, therefore the integrated
+# registry is intentionally single-replica with Recreate rollout strategy.
+okd_registry_storage_size: 20Gi
