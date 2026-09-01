@@ -87,7 +87,7 @@ printf '\n[3/5] Destroying only the temporary bootstrap VM and Neutron port...\n
 "$ROOT_DIR/scripts/okd-nodes.sh" retire-bootstrap
 
 if [[ -s "$TF_VARS" ]]; then
-  bootstrap_enabled=$(jq -r '.bootstrap_enabled // true' "$TF_VARS")
+  bootstrap_enabled=$(jq -r 'if has("bootstrap_enabled") then .bootstrap_enabled else true end' "$TF_VARS")
   if [[ "$bootstrap_enabled" != false ]]; then
     echo "Runtime Terraform still reports bootstrap_enabled=$bootstrap_enabled" >&2
     exit 1

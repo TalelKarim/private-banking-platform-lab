@@ -416,7 +416,7 @@ data = {
 tfvars_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PY
 chmod 0600 "$TF_VARS"
-BOOTSTRAP_ENABLED=$(jq -r '.bootstrap_enabled // true' "$TF_VARS")
+BOOTSTRAP_ENABLED=$(jq -r 'if has("bootstrap_enabled") then .bootstrap_enabled else true end' "$TF_VARS")
 
 printf '\nConverging runtime OKD machines with Terraform (bootstrap_enabled=%s)...\n' "$BOOTSTRAP_ENABLED"
 terraform -chdir="$TF_DIR" init -input=false >/dev/null

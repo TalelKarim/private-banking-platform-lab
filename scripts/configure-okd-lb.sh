@@ -62,7 +62,7 @@ case "$BOOTSTRAP_MODE" in
   auto)
     BOOTSTRAP_BACKENDS_ENABLED=true
     if [[ -s "$RUNTIME_TFVARS" ]] && command -v jq >/dev/null 2>&1; then
-      if [[ "$(jq -r '.bootstrap_enabled // true' "$RUNTIME_TFVARS")" == false ]]; then
+      if [[ "$(jq -r 'if has("bootstrap_enabled") then .bootstrap_enabled else true end' "$RUNTIME_TFVARS")" == false ]]; then
         BOOTSTRAP_BACKENDS_ENABLED=false
       fi
     fi
