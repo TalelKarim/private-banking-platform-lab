@@ -263,20 +263,62 @@
     mode: "0644"
   register: openstack_runtime_nova_recovery_settings
 
-- name: Reconfigure Nova when guest recovery settings change
+# Do not run `kolla-ansible reconfigure --tags nova` for this single setting.
+# In an all-in-one Kolla deployment that action also walks Nova bootstrap tasks
+# and touches RabbitMQ users. It can therefore fail on an unrelated RabbitMQ
+# control-plane check even though the only desired change is local to
+# nova-compute. Keep the Kolla override above as the durable source of truth,
+# patch the currently rendered nova-compute config, then restart only that
+# container so the setting is effective immediately.
+- name: Check rendered Nova compute configuration exists
+  ansible.builtin.stat:
+    path: "{{ openstack_runtime_nova_compute_rendered_file }}"
+  register: openstack_runtime_nova_compute_rendered
+
+- name: Assert rendered Nova compute configuration exists
+  ansible.builtin.assert:
+    that:
+      - openstack_runtime_nova_compute_rendered.stat.exists
+      - openstack_runtime_nova_compute_rendered.stat.isreg
+    fail_msg: >-
+      Expected Kolla rendered Nova config {{ openstack_runtime_nova_compute_rendered_file }}
+      is missing. Refusing to mutate/restart nova-compute blindly.
+
+- name: Apply guest recovery setting to live Nova compute configuration
+  ansible.builtin.lineinfile:
+    path: "{{ openstack_runtime_nova_compute_rendered_file }}"
+    regexp: '^\s*resume_guests_state_on_host_boot\s*='
+    line: 'resume_guests_state_on_host_boot = true'
+    insertafter: '^\[DEFAULT\]\s*$'
+    state: present
+    backup: false
+  register: openstack_runtime_nova_live_recovery_settings
+
+- name: Restart only nova_compute when live guest recovery setting changes
   ansible.builtin.command:
     argv:
-      - "{{ openstack_runtime_kolla_venv }}/bin/kolla-ansible"
-      - reconfigure
-      - -i
-      - "{{ openstack_runtime_kolla_inventory }}"
-      - --tags
-      - nova
-  environment:
-    PATH: "{{ openstack_runtime_kolla_venv }}/bin:{{ ansible_env.PATH }}"
-    ANSIBLE_COLLECTIONS_PATH: "{{ openstack_runtime_kolla_collections_path }}:{{ ansible_env.HOME }}/.ansible/collections:/usr/share/ansible/collections"
-  when: openstack_runtime_nova_recovery_settings.changed
+      - docker
+      - restart
+      - "{{ openstack_runtime_nova_compute_container }}"
+  when: openstack_runtime_nova_live_recovery_settings.changed
+  register: openstack_runtime_nova_compute_restart
   changed_when: true
+
+- name: Verify nova_compute loaded guest recovery setting
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ openstack_runtime_nova_compute_container }}"
+      - grep
+      - -Eq
+      - '^resume_guests_state_on_host_boot\s*=\s*true$'
+      - /etc/nova/nova.conf
+  register: openstack_runtime_nova_recovery_verify
+  changed_when: false
+  retries: 15
+  delay: 2
+  until: openstack_runtime_nova_recovery_verify.rc == 0
 
 - name: Ensure Horizon custom configuration directory exists
   ansible.builtin.file:

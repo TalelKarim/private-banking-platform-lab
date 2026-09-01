@@ -39,3 +39,10 @@ openstack_runtime_horizon_public_fqdn: "cloud.{{ okd_base_domain }}"
 # running before the compute host was stopped/rebooted.
 openstack_runtime_nova_compute_override_dir: "{{ openstack_runtime_kolla_config_dir }}/config/nova"
 openstack_runtime_nova_compute_override_file: "{{ openstack_runtime_nova_compute_override_dir }}/nova-compute.conf"
+# Kolla renders the effective nova-compute configuration here. For this single
+# recovery knob we update the live rendered file directly and restart only the
+# nova_compute container, avoiding a broad kolla-ansible reconfigure that also
+# re-enters Nova/RabbitMQ bootstrap tasks. The override above remains the
+# durable source of truth for future Kolla deploy/reconfigure operations.
+openstack_runtime_nova_compute_rendered_file: "{{ openstack_runtime_kolla_config_dir }}/nova-compute/nova.conf"
+openstack_runtime_nova_compute_container: nova_compute
