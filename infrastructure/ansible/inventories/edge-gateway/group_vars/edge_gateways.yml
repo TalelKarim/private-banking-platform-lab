@@ -24,6 +24,15 @@ edge_nginx_routes:
     backend_host: "{{ openstack_horizon_backend_host }}"
     backend_port: 80
 
+  # The integrated registry Route exists for Jenkins, but must not ride the
+  # public ALB -> edge wildcard path. Nginx exact server names win over the
+  # wildcard below, so Internet requests to this host terminate here with 404
+  # while Jenkins reaches the same hostname directly through private OpenStack
+  # routing to okd-lb.
+  - name: openshift-registry-private-only
+    server_name: "default-route-openshift-image-registry.apps.{{ edge_okd_cluster_name }}.{{ edge_lab_base_domain }}"
+    direct_response: 404
+
   - name: openshift-apps
     server_name: "*.apps.{{ edge_okd_cluster_name }}.{{ edge_lab_base_domain }}"
     backend_scheme: https

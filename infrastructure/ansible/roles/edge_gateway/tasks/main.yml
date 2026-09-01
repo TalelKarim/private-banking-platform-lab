@@ -87,3 +87,18 @@
   ansible.builtin.assert:
     that:
       - edge_healthcheck.content | trim == 'ok'
+
+- name: Verify private-only direct-response virtual hosts locally
+  ansible.builtin.uri:
+    url: http://127.0.0.1/
+    headers:
+      Host: "{{ item.server_name }}"
+    status_code: "{{ item.direct_response | int }}"
+    return_content: false
+  loop: "{{ edge_nginx_routes }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - item.direct_response is defined
+    - not (item.default_server | default(false) | bool)
+  changed_when: false

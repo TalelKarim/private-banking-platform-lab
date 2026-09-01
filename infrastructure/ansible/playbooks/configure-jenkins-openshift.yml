@@ -1,0 +1,61 @@
+---
+- name: Configure OpenShift tooling and private connectivity on Jenkins worker
+  hosts: jenkins_workers
+  gather_facts: true
+  become: true
+
+  roles:
+    - role: jenkins_openshift_worker
+
+- name: Register OpenShift credential and smoke job on Jenkins controller
+  hosts: jenkins_controllers
+  gather_facts: false
+  become: true
+
+  pre_tasks:
+    - name: Read the Jenkins administrator password from SSM on ops-runner
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/aws
+          - ssm
+          - get-parameter
+          - --region
+          - "{{ jenkins_admin_password_aws_region }}"
+          - --name
+          - "{{ jenkins_admin_password_ssm_parameter_name }}"
+          - --with-decryption
+          - --query
+          - Parameter.Value
+          - --output
+          - text
+      delegate_to: localhost
+      become: false
+      register: jenkins_openshift_admin_password_lookup
+      changed_when: false
+      no_log: true
+
+    - name: Hold Jenkins administrator password only in Ansible memory
+      ansible.builtin.set_fact:
+        jenkins_openshift_admin_password: "{{ jenkins_openshift_admin_password_lookup.stdout }}"
+      no_log: true
+
+    - name: Read the runtime OpenShift service-account token from ops-runner
+      ansible.builtin.slurp:
+        src: "{{ jenkins_openshift_token_file }}"
+      delegate_to: localhost
+      become: false
+      register: jenkins_openshift_token_lookup
+      changed_when: false
+      no_log: true
+
+    - name: Hold OpenShift service-account token only in Ansible memory
+      ansible.builtin.set_fact:
+        jenkins_openshift_token: "{{ jenkins_openshift_token_lookup.content | b64decode | trim }}"
+      no_log: true
+
+  roles:
+    - role: jenkins_openshift_controller
+      vars:
+        jenkins_openshift_admin_username: "{{ jenkins_admin_username }}"
+        jenkins_openshift_smoke_pipeline_definition: >-
+          {{ lookup('ansible.builtin.file', playbook_dir + '/../../../cicd/smoke-tests/openshift/Jenkinsfile') }}

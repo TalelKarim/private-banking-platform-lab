@@ -1,0 +1,12 @@
+---
+jenkins_openshift_admin_username: admin
+jenkins_openshift_admin_password: null
+jenkins_openshift_cli_jar: /var/cache/jenkins/jenkins-cli.jar
+jenkins_openshift_runtime_dir: /run/jenkins-openshift-registration
+jenkins_openshift_token: null
+jenkins_openshift_credential_id: openshift-ci-token
+jenkins_openshift_credential_description: "OpenShift service-account token for Jenkins CI/CD"
+jenkins_openshift_smoke_job_name: platform-openshift-smoke
+jenkins_openshift_smoke_job_description: "End-to-end Jenkins -> OpenShift registry -> deployment validation"
+jenkins_openshift_smoke_pipeline_definition: null
+jenkins_openshift_registry_host: null

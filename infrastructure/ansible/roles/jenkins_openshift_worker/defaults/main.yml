@@ -1,0 +1,23 @@
+---
+jenkins_openshift_api_host: api.okd.lab.talelkarimchebbi.com
+jenkins_openshift_api_url: https://api.okd.lab.talelkarimchebbi.com:6443
+jenkins_openshift_registry_host: null
+jenkins_openshift_lb_private_ip: 10.20.0.10
+jenkins_openshift_api_ca_src: null
+jenkins_openshift_ingress_ca_src: null
+jenkins_openshift_oc_binary_src: /usr/local/bin/oc
+jenkins_openshift_config_dir: /etc/jenkins-agent/openshift
+jenkins_openshift_api_ca_path: /etc/jenkins-agent/openshift/api-ca.crt
+jenkins_openshift_ingress_ca_path: /etc/jenkins-agent/openshift/ingress-ca.crt
+jenkins_openshift_packages:
+  - podman
+  - buildah
+  - skopeo
+  - uidmap
+  - fuse-overlayfs
+  - slirp4netns
+  - ca-certificates
+  - curl
+  - jq
+jenkins_openshift_rootless_subuid_start: 200000
+jenkins_openshift_rootless_subuid_count: 65536

@@ -18,5 +18,6 @@ jenkins_plugins:
   - workflow-aggregator
   - git
   - credentials-binding
+  - plain-credentials
   - ssh-agent
   - configuration-as-code

@@ -1,0 +1,72 @@
+import com.cloudbees.plugins.credentials.CredentialsScope
+import com.cloudbees.plugins.credentials.SystemCredentialsProvider
+import com.cloudbees.plugins.credentials.domains.Domain
+import hudson.util.Secret
+import jenkins.model.Jenkins
+import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl
+import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition
+import org.jenkinsci.plugins.workflow.job.WorkflowJob
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
+Jenkins jenkins = Jenkins.get()
+String credentialId = {{ jenkins_openshift_credential_id | to_json }}
+String credentialDescription = {{ jenkins_openshift_credential_description | to_json }}
+String desiredToken = new File({{ (jenkins_openshift_runtime_dir ~ '/token') | to_json }}).text.trim()
+String jobName = {{ jenkins_openshift_smoke_job_name | to_json }}
+String jobDescription = {{ jenkins_openshift_smoke_job_description | to_json }}
+String registryHost = {{ jenkins_openshift_registry_host | to_json }}
+String pipelineScript = new String(
+    Base64.getDecoder().decode({{ jenkins_openshift_smoke_pipeline_definition | b64encode | to_json }}),
+    StandardCharsets.UTF_8
+).replace("OPENSHIFT_REGISTRY_PLACEHOLDER", registryHost)
+
+if (desiredToken.isEmpty()) {
+    throw new IllegalStateException("OpenShift token file is empty")
+}
+
+def store = SystemCredentialsProvider.getInstance().getStore()
+def domain = Domain.global()
+def existingCredential = SystemCredentialsProvider.getInstance().getCredentials().find { it.id == credentialId }
+boolean credentialChanged = false
+
+if (!(existingCredential instanceof StringCredentialsImpl)
+        || existingCredential.secret.plainText != desiredToken
+        || existingCredential.description != credentialDescription) {
+    def desiredCredential = new StringCredentialsImpl(
+        CredentialsScope.GLOBAL,
+        credentialId,
+        credentialDescription,
+        Secret.fromString(desiredToken)
+    )
+    if (existingCredential == null) {
+        store.addCredentials(domain, desiredCredential)
+    } else {
+        store.updateCredentials(domain, existingCredential, desiredCredential)
+    }
+    credentialChanged = true
+}
+
+WorkflowJob job = jenkins.getItemByFullName(jobName) as WorkflowJob
+boolean jobChanged = false
+if (job == null) {
+    job = jenkins.createProject(WorkflowJob.class, jobName)
+    jobChanged = true
+}
+if (job.getDescription() != jobDescription) {
+    job.setDescription(jobDescription)
+    jobChanged = true
+}
+def existingDefinition = job.getDefinition()
+if (!(existingDefinition instanceof CpsFlowDefinition)
+        || existingDefinition.getScript() != pipelineScript
+        || !existingDefinition.isSandbox()) {
+    job.setDefinition(new CpsFlowDefinition(pipelineScript, true))
+    jobChanged = true
+}
+job.save()
+jenkins.save()
+
+println("CREDENTIAL_CHANGED=" + credentialChanged)
+println("JOB_CHANGED=" + jobChanged)
+println("OPENSHIFT_SMOKE_JOB=" + job.fullName)

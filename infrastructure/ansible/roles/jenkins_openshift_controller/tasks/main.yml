@@ -1,0 +1,83 @@
+---
+- name: Validate Jenkins OpenShift controller inputs
+  ansible.builtin.assert:
+    that:
+      - jenkins_openshift_admin_username is string
+      - jenkins_openshift_admin_username | length > 0
+      - jenkins_openshift_admin_password is string
+      - jenkins_openshift_admin_password | length >= 16
+      - jenkins_openshift_token is string
+      - jenkins_openshift_token | length > 100
+      - jenkins_openshift_registry_host is string
+      - jenkins_openshift_registry_host | length > 0
+      - jenkins_openshift_smoke_pipeline_definition is string
+      - jenkins_openshift_smoke_pipeline_definition | length > 0
+    fail_msg: "Jenkins/OpenShift controller integration requires Jenkins admin auth, a runtime OpenShift token, registry hostname and smoke pipeline."
+  no_log: true
+
+- name: Ensure Jenkins CLI is available for OpenShift integration
+  ansible.builtin.get_url:
+    url: "http://127.0.0.1:8080/jnlpJars/jenkins-cli.jar"
+    dest: "{{ jenkins_openshift_cli_jar }}"
+    owner: root
+    group: root
+    mode: "0644"
+    url_username: "{{ jenkins_openshift_admin_username }}"
+    url_password: "{{ jenkins_openshift_admin_password }}"
+    force_basic_auth: true
+  no_log: true
+
+- name: Reconcile Jenkins OpenShift credential and smoke job
+  block:
+    - name: Create runtime-only Jenkins OpenShift registration directory
+      ansible.builtin.file:
+        path: "{{ jenkins_openshift_runtime_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Write runtime-only Jenkins administrator authentication
+      ansible.builtin.copy:
+        content: "{{ jenkins_openshift_admin_username }}:{{ jenkins_openshift_admin_password }}\n"
+        dest: "{{ jenkins_openshift_runtime_dir }}/cli-auth"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Write runtime-only OpenShift service-account token
+      ansible.builtin.copy:
+        content: "{{ jenkins_openshift_token }}\n"
+        dest: "{{ jenkins_openshift_runtime_dir }}/token"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Create or update Jenkins OpenShift credential and smoke job
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/java
+          - -jar
+          - "{{ jenkins_openshift_cli_jar }}"
+          - -s
+          - http://127.0.0.1:8080/
+          - -http
+          - -auth
+          - "@{{ jenkins_openshift_runtime_dir }}/cli-auth"
+          - groovy
+          - "="
+        stdin: "{{ lookup('ansible.builtin.template', role_path + '/templates/register-openshift-cicd.groovy.j2') }}"
+      register: jenkins_openshift_registration
+      changed_when: >-
+        'CREDENTIAL_CHANGED=true' in jenkins_openshift_registration.stdout
+        or 'JOB_CHANGED=true' in jenkins_openshift_registration.stdout
+      no_log: true
+
+  always:
+    - name: Remove runtime-only Jenkins OpenShift secrets
+      ansible.builtin.file:
+        path: "{{ jenkins_openshift_runtime_dir }}"
+        state: absent
+      no_log: true

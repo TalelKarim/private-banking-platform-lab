@@ -1,0 +1,227 @@
+---
+- name: Validate Jenkins OpenShift worker inputs
+  ansible.builtin.assert:
+    that:
+      - jenkins_openshift_api_host is string
+      - jenkins_openshift_api_host | length > 0
+      - jenkins_openshift_api_url is match('^https://')
+      - jenkins_openshift_registry_host is string
+      - jenkins_openshift_registry_host | length > 0
+      - jenkins_openshift_lb_private_ip is match('^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$')
+      - jenkins_openshift_api_ca_src is string
+      - jenkins_openshift_api_ca_src | length > 0
+      - jenkins_openshift_ingress_ca_src is string
+      - jenkins_openshift_ingress_ca_src | length > 0
+      - jenkins_openshift_oc_binary_src is string
+      - jenkins_openshift_oc_binary_src | length > 0
+    fail_msg: "Jenkins/OpenShift worker integration requires API/registry names, the private OKD LB IP and runtime CA/tool sources."
+
+- name: Install rootless image build and registry tooling
+  ansible.builtin.apt:
+    name: "{{ jenkins_openshift_packages }}"
+    state: present
+    update_cache: true
+
+- name: Install the cluster-matched oc client from ops-runner
+  ansible.builtin.copy:
+    src: "{{ jenkins_openshift_oc_binary_src }}"
+    dest: /usr/local/bin/oc
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create Jenkins OpenShift configuration directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ jenkins_openshift_config_dir }}"
+      owner: root
+      group: "{{ jenkins_agent_group }}"
+      mode: "0750"
+    - path: "/etc/containers/certs.d/{{ jenkins_openshift_registry_host }}"
+      owner: root
+      group: root
+      mode: "0755"
+    - path: "{{ jenkins_agent_remote_fs }}/.run"
+      owner: "{{ jenkins_agent_user }}"
+      group: "{{ jenkins_agent_group }}"
+      mode: "0700"
+    - path: "{{ jenkins_agent_remote_fs }}/.config/containers"
+      owner: "{{ jenkins_agent_user }}"
+      group: "{{ jenkins_agent_group }}"
+      mode: "0750"
+    - path: "{{ jenkins_agent_remote_fs }}/.local/share/containers"
+      owner: "{{ jenkins_agent_user }}"
+      group: "{{ jenkins_agent_group }}"
+      mode: "0750"
+
+- name: Configure private split-horizon names for OpenShift API and registry
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} private-banking-jenkins-openshift"
+    block: |
+      {{ jenkins_openshift_lb_private_ip }} {{ jenkins_openshift_api_host }}
+      {{ jenkins_openshift_lb_private_ip }} {{ jenkins_openshift_registry_host }}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install OpenShift API CA for Jenkins oc
+  ansible.builtin.copy:
+    src: "{{ jenkins_openshift_api_ca_src }}"
+    dest: "{{ jenkins_openshift_api_ca_path }}"
+    owner: root
+    group: "{{ jenkins_agent_group }}"
+    mode: "0644"
+
+- name: Install OpenShift ingress CA for registry TLS
+  ansible.builtin.copy:
+    src: "{{ jenkins_openshift_ingress_ca_src }}"
+    dest: "{{ jenkins_openshift_ingress_ca_path }}"
+    owner: root
+    group: "{{ jenkins_agent_group }}"
+    mode: "0644"
+
+- name: Trust the OpenShift API CA system-wide
+  ansible.builtin.copy:
+    src: "{{ jenkins_openshift_api_ca_src }}"
+    dest: /usr/local/share/ca-certificates/private-banking-openshift-api.crt
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update trusted CA certificates
+
+- name: Trust the OpenShift ingress CA system-wide
+  ansible.builtin.copy:
+    src: "{{ jenkins_openshift_ingress_ca_src }}"
+    dest: /usr/local/share/ca-certificates/private-banking-openshift-ingress.crt
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update trusted CA certificates
+
+- name: Trust the registry ingress CA explicitly for containers/image
+  ansible.builtin.copy:
+    src: "{{ jenkins_openshift_ingress_ca_src }}"
+    dest: "/etc/containers/certs.d/{{ jenkins_openshift_registry_host }}/ca.crt"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Allocate a subordinate UID range for rootless Podman
+  ansible.builtin.lineinfile:
+    path: /etc/subuid
+    regexp: "^{{ jenkins_agent_user | regex_escape }}:"
+    line: "{{ jenkins_agent_user }}:{{ jenkins_openshift_rootless_subuid_start }}:{{ jenkins_openshift_rootless_subuid_count }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Allocate a subordinate GID range for rootless Podman
+  ansible.builtin.lineinfile:
+    path: /etc/subgid
+    regexp: "^{{ jenkins_agent_user | regex_escape }}:"
+    line: "{{ jenkins_agent_user }}:{{ jenkins_openshift_rootless_subuid_start }}:{{ jenkins_openshift_rootless_subuid_count }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add rootless container runtime variables to the Jenkins agent environment
+  ansible.builtin.blockinfile:
+    path: "{{ jenkins_agent_environment_file }}"
+    marker: "# {mark} OPENSHIFT ROOTLESS CONTAINERS"
+    block: |
+      XDG_RUNTIME_DIR={{ jenkins_agent_remote_fs }}/.run
+      XDG_CONFIG_HOME={{ jenkins_agent_remote_fs }}/.config
+      XDG_DATA_HOME={{ jenkins_agent_remote_fs }}/.local/share
+  notify: Restart Jenkins agent for OpenShift toolchain environment
+
+- name: Flush OpenShift worker handlers before validation
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify private API hostname resolves to okd-lb
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/getent
+      - ahostsv4
+      - "{{ jenkins_openshift_api_host }}"
+  register: jenkins_openshift_api_resolution
+  changed_when: false
+  failed_when: jenkins_openshift_lb_private_ip not in jenkins_openshift_api_resolution.stdout
+
+- name: Verify private registry hostname resolves to okd-lb
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/getent
+      - ahostsv4
+      - "{{ jenkins_openshift_registry_host }}"
+  register: jenkins_openshift_registry_resolution
+  changed_when: false
+  failed_when: jenkins_openshift_lb_private_ip not in jenkins_openshift_registry_resolution.stdout
+
+- name: Verify OpenShift API TLS reachability from Jenkins worker
+  ansible.builtin.uri:
+    url: "{{ jenkins_openshift_api_url }}/version"
+    ca_path: "{{ jenkins_openshift_api_ca_path }}"
+    status_code:
+      - 200
+      - 401
+      - 403
+    return_content: true
+  changed_when: false
+
+- name: Verify registry route TLS reachability from Jenkins worker
+  ansible.builtin.uri:
+    url: "https://{{ jenkins_openshift_registry_host }}/v2/"
+    ca_path: "{{ jenkins_openshift_ingress_ca_path }}"
+    status_code:
+      - 200
+      - 401
+    return_content: false
+  changed_when: false
+
+- name: Verify oc client on Jenkins worker
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/oc
+      - version
+      - --client
+  changed_when: false
+
+- name: Verify Podman rootless execution as Jenkins
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/podman
+      - info
+      - --format
+      - "{{ '{{.Host.Security.Rootless}}' }}"
+  become: true
+  become_user: "{{ jenkins_agent_user }}"
+  environment:
+    HOME: "{{ jenkins_agent_remote_fs }}"
+    XDG_RUNTIME_DIR: "{{ jenkins_agent_remote_fs }}/.run"
+    XDG_CONFIG_HOME: "{{ jenkins_agent_remote_fs }}/.config"
+    XDG_DATA_HOME: "{{ jenkins_agent_remote_fs }}/.local/share"
+  register: jenkins_openshift_podman_rootless
+  changed_when: false
+  failed_when: jenkins_openshift_podman_rootless.stdout | trim != 'true'
+
+- name: Verify Buildah on Jenkins worker
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/buildah
+      - version
+  become: true
+  become_user: "{{ jenkins_agent_user }}"
+  environment:
+    HOME: "{{ jenkins_agent_remote_fs }}"
+    XDG_RUNTIME_DIR: "{{ jenkins_agent_remote_fs }}/.run"
+    XDG_CONFIG_HOME: "{{ jenkins_agent_remote_fs }}/.config"
+    XDG_DATA_HOME: "{{ jenkins_agent_remote_fs }}/.local/share"
+  changed_when: false

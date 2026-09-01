@@ -47,15 +47,15 @@ oc apply -f "$PVC_MANIFEST"
 printf '==> Converging the integrated registry onto single-replica Cinder block storage\n'
 # Cinder provides RWO block storage in this lab. OpenShift supports this for a
 # single registry replica when the rollout strategy is Recreate. Keep
-# defaultRoute=false in phase 1: phase 2 will create the Jenkins-only registry
-# access path and explicitly prevent the public AWS edge from exposing it.
+# Do not manage defaultRoute here. A fresh cluster defaults to no external
+# route, while Phase 2 enables the Jenkins route. Leaving the field untouched
+# avoids deleting/recreating that route on every idempotent configure-lab run.
 oc patch configs.imageregistry.operator.openshift.io/cluster --type=merge -p "$(cat <<'JSON'
 {
   "spec": {
     "managementState": "Managed",
     "replicas": 1,
     "rolloutStrategy": "Recreate",
-    "defaultRoute": false,
     "storage": {
       "pvc": {
         "claim": "image-registry-storage"
@@ -88,4 +88,5 @@ printf '\nOpenShift integrated registry storage READY:\n'
 printf '  %-24s %s\n' 'PVC' "image-registry-storage ($REGISTRY_STORAGE_SIZE)"
 printf '  %-24s %s\n' 'StorageClass' "$STORAGE_CLASS"
 printf '  %-24s %s\n' 'Replica strategy' '1 replica / Recreate (RWO block storage)'
-printf '  %-24s %s\n' 'External registry Route' 'DISABLED (phase 2)'
+REGISTRY_ROUTE_STATE=$(oc get route default-route -n openshift-image-registry -o name 2>/dev/null || true)
+printf '  %-24s %s\n' 'External registry Route' "${REGISTRY_ROUTE_STATE:-DISABLED until phase 2}"

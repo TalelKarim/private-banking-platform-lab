@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cicd
+  labels:
+    app.kubernetes.io/part-of: private-banking-platform-lab
+    private-banking-platform-lab/managed-by: platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    app.kubernetes.io/part-of: private-banking-platform-lab
+    private-banking-platform-lab/managed-by: platform

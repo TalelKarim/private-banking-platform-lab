@@ -1,0 +1,165 @@
+pipeline {
+    agent { label 'lab-worker' }
+
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 15, unit: 'MINUTES')
+    }
+
+    environment {
+        OPENSHIFT_API = 'https://api.okd.lab.talelkarimchebbi.com:6443'
+        OPENSHIFT_NAMESPACE = 'demo'
+        OPENSHIFT_REGISTRY = 'OPENSHIFT_REGISTRY_PLACEHOLDER'
+        OPENSHIFT_API_CA = '/etc/jenkins-agent/openshift/api-ca.crt'
+    }
+
+    stages {
+        stage('Assert dedicated worker') {
+            steps {
+                sh '''
+                    set -eu
+                    echo "NODE_NAME=${NODE_NAME}"
+                    test "${NODE_NAME}" = "jenkins-agent-01"
+                    command -v oc
+                    command -v podman
+                    command -v buildah
+                '''
+            }
+        }
+
+        stage('Authenticate to OpenShift') {
+            steps {
+                withCredentials([string(credentialsId: 'openshift-ci-token', variable: 'OPENSHIFT_TOKEN')]) {
+                    sh '''
+                        set -euo pipefail
+                        export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                        rm -f "${KUBECONFIG}"
+                        oc login "${OPENSHIFT_API}" \
+                          --token="${OPENSHIFT_TOKEN}" \
+                          --certificate-authority="${OPENSHIFT_API_CA}" >/dev/null
+
+                        identity=$(oc whoami)
+                        echo "OpenShift identity: ${identity}"
+                        test "${identity}" = "system:serviceaccount:cicd:jenkins"
+
+                        test "$(oc auth can-i create deployments -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i create routes.route.openshift.io -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        if oc auth can-i get nodes >/dev/null 2>&1; then
+                          echo 'Jenkins unexpectedly has cluster-wide node read access.' >&2
+                          exit 1
+                        fi
+                    '''
+                }
+            }
+        }
+
+        stage('Build image') {
+            steps {
+                sh '''
+                    set -euo pipefail
+                    rm -rf phase2-image
+                    mkdir phase2-image
+                    cat > phase2-image/Dockerfile <<'DOCKERFILE'
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6
+CMD ["/bin/sh", "-c", "echo PHASE2-JENKINS-OPENSHIFT-OK && sleep 3600"]
+DOCKERFILE
+                    podman build --format docker -t "phase2-smoke:${BUILD_NUMBER}" phase2-image
+                '''
+            }
+        }
+
+        stage('Push to OpenShift registry') {
+            steps {
+                withCredentials([string(credentialsId: 'openshift-ci-token', variable: 'OPENSHIFT_TOKEN')]) {
+                    sh '''
+                        set -euo pipefail
+                        export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                        REGISTRY_AUTH_FILE="${WORKSPACE}/.podman-auth.json"
+                        : "${OPENSHIFT_REGISTRY:?OPENSHIFT_REGISTRY is injected by the managed Jenkins job}"
+
+                        cat <<'EOF_IMAGESTREAM' | oc apply -f -
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: phase2-smoke
+  namespace: demo
+EOF_IMAGESTREAM
+
+                        printf '%s' "${OPENSHIFT_TOKEN}" | \
+                          podman login \
+                            --authfile "${REGISTRY_AUTH_FILE}" \
+                            --username serviceaccount \
+                            --password-stdin \
+                            "${OPENSHIFT_REGISTRY}"
+
+                        target="${OPENSHIFT_REGISTRY}/${OPENSHIFT_NAMESPACE}/phase2-smoke:${BUILD_NUMBER}"
+                        podman tag "phase2-smoke:${BUILD_NUMBER}" "${target}"
+                        podman push --authfile "${REGISTRY_AUTH_FILE}" "${target}"
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy from integrated registry') {
+            steps {
+                sh '''
+                    set -euo pipefail
+                    export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+
+                    tag="phase2-smoke:${BUILD_NUMBER}"
+                    for attempt in $(seq 1 30); do
+                      digest_ref=$(oc get istag "${tag}" -n "${OPENSHIFT_NAMESPACE}" \
+                        -o jsonpath='{.image.dockerImageReference}' 2>/dev/null || true)
+                      [ -n "${digest_ref}" ] && break
+                      sleep 2
+                    done
+                    test -n "${digest_ref:-}"
+                    echo "Deploying immutable image reference: ${digest_ref}"
+
+                    cat <<EOF_DEPLOY | oc apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: phase2-smoke
+  namespace: ${OPENSHIFT_NAMESPACE}
+  labels:
+    app: phase2-smoke
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: phase2-smoke
+  template:
+    metadata:
+      labels:
+        app: phase2-smoke
+    spec:
+      containers:
+        - name: phase2-smoke
+          image: ${digest_ref}
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+EOF_DEPLOY
+
+                    oc rollout status deployment/phase2-smoke \
+                      -n "${OPENSHIFT_NAMESPACE}" --timeout=5m
+                    oc get pods -n "${OPENSHIFT_NAMESPACE}" -l app=phase2-smoke -o wide
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            sh '''
+                rm -f "${WORKSPACE}/.openshift-kubeconfig" "${WORKSPACE}/.podman-auth.json" || true
+            '''
+        }
+    }
+}
