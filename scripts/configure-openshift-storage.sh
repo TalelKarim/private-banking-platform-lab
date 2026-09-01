@@ -107,19 +107,53 @@ fi
 remote_openstack role add --project "$OS_PROJECT" --user "$OS_USER" "$OS_ROLE" >/dev/null
 
 endpoint_url() {
-  local service_type=$1
-  remote_openstack endpoint list \
-    --service "$service_type" \
-    --interface public \
-    -f value -c URL | awk 'NF {print $1; exit}'
+  local candidate url
+  for candidate in "$@"; do
+    if url=$(remote_openstack endpoint list \
+        --service "$candidate" \
+        --interface public \
+        -f value -c URL 2>/dev/null | awk 'NF {print $1; exit}'); then
+      if [[ -n "$url" ]]; then
+        printf '    %-10s service-catalog match: %s\n' "endpoint" "$candidate" >&2
+        printf '%s\n' "$url"
+        return 0
+      fi
+    fi
+  done
+  return 1
 }
 
-AUTH_URL=$(endpoint_url identity)
-NOVA_URL=$(endpoint_url compute)
-CINDER_URL=$(endpoint_url volumev3)
-[[ -n "$AUTH_URL" ]] || { echo "Unable to discover the Keystone public endpoint." >&2; exit 1; }
-[[ -n "$NOVA_URL" ]] || { echo "Unable to discover the Nova public endpoint." >&2; exit 1; }
-[[ -n "$CINDER_URL" ]] || { echo "Unable to discover the Cinder v3 public endpoint." >&2; exit 1; }
+# Service catalog naming changed across OpenStack generations. Modern Cinder
+# commonly advertises type=block-storage/name=cinder, while older deployments
+# may expose volumev3/cinderv3. Resolve from a compatibility list instead of
+# hard-coding one catalog identifier.
+AUTH_URL=$(endpoint_url identity keystone) || {
+  echo "Unable to discover the Keystone public endpoint." >&2
+  remote_openstack service list >&2 || true
+  exit 1
+}
+NOVA_URL=$(endpoint_url compute nova) || {
+  echo "Unable to discover the Nova public endpoint." >&2
+  remote_openstack service list >&2 || true
+  exit 1
+}
+CINDER_URL=$(endpoint_url block-storage volumev3 cinderv3 cinder volume) || {
+  echo "Unable to discover the Cinder public endpoint from the OpenStack service catalog." >&2
+  echo "Known services/endpoints:" >&2
+  remote_openstack service list >&2 || true
+  remote_openstack endpoint list >&2 || true
+  exit 1
+}
+
+# Older Cinder catalogs can publish /v3/%(project_id)s. That is valid for
+# authenticated clients which substitute the project, but a raw curl reachability
+# probe must hit a concrete URL. Strip only the catalog placeholder for probes;
+# the CSI driver still receives the original Keystone catalog unchanged.
+probe_endpoint_url() {
+  printf '%s\n' "$1" | sed -E \
+    -e 's#/%\((project|tenant)_id\)s##g' \
+    -e 's#/\{(project|tenant)_id\}##g'
+}
 
 cat > "$CLOUD_CONF" <<EOF_CLOUD
 [Global]
@@ -147,8 +181,9 @@ for endpoint_spec in \
   "Nova|$NOVA_URL" \
   "Cinder|$CINDER_URL"; do
   IFS='|' read -r endpoint_name endpoint_url_value <<<"$endpoint_spec"
+  endpoint_probe_url=$(probe_endpoint_url "$endpoint_url_value")
   HTTP_CODE=$(oc debug node/okd-01 --quiet -- chroot /host \
-    curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 "$endpoint_url_value" \
+    curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 "$endpoint_probe_url" \
     2>/dev/null | tail -n1 || true)
   if [[ ! "$HTTP_CODE" =~ ^(2|3|4)[0-9][0-9]$ ]]; then
     echo "OKD node -> $endpoint_name connectivity failed for $endpoint_url_value (HTTP code: ${HTTP_CODE:-none})." >&2
