@@ -58,6 +58,16 @@ resource "openstack_compute_instance_v2" "bootstrap" {
   network {
     port = openstack_networking_port_v2.bootstrap[0].id
   }
+
+  # Ignition/user_data is a first-boot input. openshift-install assets contain
+  # short-lived/generated material and can legitimately differ on a later
+  # orchestration run. Replacing an already-booted OKD VM because that file
+  # changed would destroy cluster state, so user_data drift is intentionally
+  # ignored after creation. A deliberate rebuild still gets the current
+  # user_data because a newly-created resource always uses the configured value.
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 }
 
 resource "openstack_networking_port_v2" "control_plane" {
@@ -114,5 +124,12 @@ resource "openstack_compute_instance_v2" "control_plane" {
 
   network {
     port = openstack_networking_port_v2.control_plane[each.key].id
+  }
+
+  # Same rule for compact control-plane nodes: Ignition is consumed only on
+  # first boot. Never let a regenerated master.ign implicitly replace an
+  # existing etcd/control-plane VM. Rebuilds must be explicit (destroy/create).
+  lifecycle {
+    ignore_changes = [user_data]
   }
 }

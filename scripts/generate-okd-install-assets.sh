@@ -6,6 +6,7 @@ CLUSTER_CONFIG="$ROOT_DIR/platform/openshift/cluster-config.yml"
 RUNTIME_ROOT=${OKD_RUNTIME_ROOT:-$ROOT_DIR/.runtime/openshift}
 INSTALL_DIR="$RUNTIME_ROOT/install"
 READY_FILE="$RUNTIME_ROOT/install-assets.ready"
+TF_STATE="$RUNTIME_ROOT/terraform-nodes/terraform.tfstate"
 WORKLOAD_SSH_PRIVATE_KEY=${WORKLOAD_SSH_PRIVATE_KEY:-/home/ubuntu/.ssh/private-banking-openstack-workloads}
 ANSIBLE_PYTHON=${ANSIBLE_PYTHON:-/opt/ansible-venv/bin/python}
 MAX_ASSET_AGE_SECONDS=${OKD_INSTALL_ASSET_MAX_AGE_SECONDS:-36000}
@@ -93,13 +94,57 @@ CONFIG_FINGERPRINT=$(
   } | sha256sum | awk '{print $1}'
 )
 
+# Installer assets are immutable first-boot material for an existing OKD
+# control plane. If runtime Terraform already owns control-plane instances,
+# regenerating master.ign/kubeconfig would describe a different installation
+# and (before this guard existed) changed Terraform user_data, forcing all
+# three compact masters to be replaced. Detect that state and make the
+# operation fail-safe/idempotent.
+runtime_has_control_planes=false
+if [[ -s "$TF_STATE" ]]; then
+  runtime_has_control_planes=$(
+    "$ANSIBLE_PYTHON" - "$TF_STATE" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        state = json.load(handle)
+except (OSError, ValueError):
+    print("false")
+    raise SystemExit(0)
+
+for resource in state.get("resources", []):
+    if (resource.get("type") == "openstack_compute_instance_v2"
+            and resource.get("name") == "control_plane"
+            and resource.get("instances")):
+        print("true")
+        break
+else:
+    print("false")
+PY
+  )
+fi
+
 assets_are_reusable=false
 if [[ -f "$READY_FILE" && -f "$INSTALL_DIR/bootstrap.ign" && -f "$INSTALL_DIR/master.ign" ]]; then
   previous_fingerprint=$(awk -F= '$1 == "fingerprint" {print $2}' "$READY_FILE" || true)
   created_epoch=$(awk -F= '$1 == "created_epoch" {print $2}' "$READY_FILE" || true)
   now_epoch=$(date +%s)
 
-  if [[ "$previous_fingerprint" == "$CONFIG_FINGERPRINT" && "$created_epoch" =~ ^[0-9]+$ ]]; then
+  if [[ "$runtime_has_control_planes" == true ]]; then
+    if [[ "$previous_fingerprint" != "$CONFIG_FINGERPRINT" ]]; then
+      echo "Refusing to regenerate OKD installer assets while control-plane VMs exist." >&2
+      echo "The desired install-time configuration changed; perform an explicit OKD destroy/rebuild instead." >&2
+      exit 1
+    fi
+    # Once nodes exist, asset age is irrelevant: Ignition has already been
+    # consumed and the matching kubeconfig is the credential we must preserve.
+    assets_are_reusable=true
+    if [[ "$created_epoch" =~ ^[0-9]+$ ]]; then
+      age=$((now_epoch - created_epoch))
+    fi
+  elif [[ "$previous_fingerprint" == "$CONFIG_FINGERPRINT" && "$created_epoch" =~ ^[0-9]+$ ]]; then
     age=$((now_epoch - created_epoch))
     if (( age >= 0 && age < MAX_ASSET_AGE_SECONDS )); then
       assets_are_reusable=true
@@ -107,10 +152,20 @@ if [[ -f "$READY_FILE" && -f "$INSTALL_DIR/bootstrap.ign" && -f "$INSTALL_DIR/ma
   fi
 fi
 
+if [[ "$runtime_has_control_planes" == true && "$assets_are_reusable" != true ]]; then
+  echo "Existing OKD control-plane VMs were found, but their original installer assets are missing or inconsistent." >&2
+  echo "Refusing to generate a new cluster identity over live nodes. Preserve/recover .runtime/openshift or explicitly rebuild OKD." >&2
+  exit 1
+fi
+
 if [[ "$assets_are_reusable" == true ]]; then
-  echo "Fresh OKD installation assets already exist; reusing them."
+  if [[ "$runtime_has_control_planes" == true ]]; then
+    echo "Existing OKD control-plane VMs detected; preserving their original installer assets."
+  else
+    echo "Fresh OKD installation assets already exist; reusing them."
+  fi
   echo "  directory: $INSTALL_DIR"
-  echo "  age:       $age seconds"
+  [[ -n "${age:-}" ]] && echo "  age:       $age seconds"
   exit 0
 fi
 
