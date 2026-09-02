@@ -34,6 +34,12 @@
       private OKD LB IP, runtime CA/tool sources, and the canonical Jenkins
       agent runtime identity/path variables from jenkins_workers inventory.
 
+- name: Install POSIX ACL support required for Ansible unprivileged become
+  ansible.builtin.apt:
+    name: acl
+    state: present
+    update_cache: true
+
 - name: Install rootless image build and registry tooling
   ansible.builtin.apt:
     name: "{{ jenkins_openshift_packages }}"
