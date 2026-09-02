@@ -6,6 +6,10 @@
       - jenkins_openshift_admin_username | length > 0
       - jenkins_openshift_admin_password is string
       - jenkins_openshift_admin_password | length >= 16
+      - jenkins_openshift_service_user is string
+      - jenkins_openshift_service_user | length > 0
+      - jenkins_openshift_service_group is string
+      - jenkins_openshift_service_group | length > 0
       - jenkins_openshift_token is string
       - jenkins_openshift_token | length > 100
       - jenkins_openshift_registry_host is string
@@ -34,8 +38,10 @@
         path: "{{ jenkins_openshift_runtime_dir }}"
         state: directory
         owner: root
-        group: root
-        mode: "0700"
+        group: "{{ jenkins_openshift_service_group }}"
+        # Jenkins only needs directory traversal to open the known token path.
+        # Keeping group read disabled prevents directory listing.
+        mode: "0710"
 
     - name: Write runtime-only Jenkins administrator authentication
       ansible.builtin.copy:
@@ -51,9 +57,23 @@
         content: "{{ jenkins_openshift_token }}\n"
         dest: "{{ jenkins_openshift_runtime_dir }}/token"
         owner: root
-        group: root
-        mode: "0600"
+        group: "{{ jenkins_openshift_service_group }}"
+        # The Groovy script runs inside the Jenkins JVM as the Jenkins OS user.
+        # It must be able to read this runtime-only token, while other users must not.
+        mode: "0640"
       no_log: true
+
+    - name: Verify the Jenkins service user can read the runtime OpenShift token
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/runuser
+          - --user
+          - "{{ jenkins_openshift_service_user }}"
+          - --
+          - /usr/bin/test
+          - -r
+          - "{{ jenkins_openshift_runtime_dir }}/token"
+      changed_when: false
 
     - name: Create or update Jenkins OpenShift credential and smoke job
       ansible.builtin.command:
