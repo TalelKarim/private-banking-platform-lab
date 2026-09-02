@@ -1,6 +1,16 @@
 ---
 common_linux_hostname: jenkins-agent-01
 
+# Canonical Jenkins agent runtime identity and paths shared by both the
+# base jenkins_worker role and the Phase 2 jenkins_openshift_worker role.
+# Keep these host-level values in inventory so separate playbooks see the
+# same settings; role defaults are not shared across independent roles.
+jenkins_agent_user: jenkins
+jenkins_agent_group: jenkins
+jenkins_agent_remote_fs: /var/lib/jenkins-agent
+jenkins_agent_environment_file: /etc/jenkins-agent/agent.env
+jenkins_agent_service_name: jenkins-agent
+
 jenkins_agent_controller_url: http://10.10.0.20:8080/
 jenkins_agent_java_package: openjdk-21-jdk
 jenkins_agent_maven_package: maven

@@ -14,7 +14,25 @@
       - jenkins_openshift_ingress_ca_src | length > 0
       - jenkins_openshift_oc_binary_src is string
       - jenkins_openshift_oc_binary_src | length > 0
-    fail_msg: "Jenkins/OpenShift worker integration requires API/registry names, the private OKD LB IP and runtime CA/tool sources."
+      - jenkins_agent_user is defined
+      - jenkins_agent_user is string
+      - jenkins_agent_user | length > 0
+      - jenkins_agent_group is defined
+      - jenkins_agent_group is string
+      - jenkins_agent_group | length > 0
+      - jenkins_agent_remote_fs is defined
+      - jenkins_agent_remote_fs is string
+      - jenkins_agent_remote_fs | length > 0
+      - jenkins_agent_environment_file is defined
+      - jenkins_agent_environment_file is string
+      - jenkins_agent_environment_file | length > 0
+      - jenkins_agent_service_name is defined
+      - jenkins_agent_service_name is string
+      - jenkins_agent_service_name | length > 0
+    fail_msg: >-
+      Jenkins/OpenShift worker integration requires API/registry names, the
+      private OKD LB IP, runtime CA/tool sources, and the canonical Jenkins
+      agent runtime identity/path variables from jenkins_workers inventory.
 
 - name: Install rootless image build and registry tooling
   ansible.builtin.apt:
