@@ -23,6 +23,7 @@ pipeline {
                     command -v oc
                     command -v podman
                     command -v buildah
+                    command -v bash
                 '''
             }
         }
@@ -30,7 +31,7 @@ pipeline {
         stage('Authenticate to OpenShift') {
             steps {
                 withCredentials([string(credentialsId: 'openshift-ci-token', variable: 'OPENSHIFT_TOKEN')]) {
-                    sh '''
+                    sh '''#!/usr/bin/env bash
                         set -euo pipefail
                         export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
                         rm -f "${KUBECONFIG}"
@@ -55,7 +56,7 @@ pipeline {
 
         stage('Build image') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                     set -euo pipefail
                     rm -rf phase2-image
                     mkdir phase2-image
@@ -71,7 +72,7 @@ DOCKERFILE
         stage('Push to OpenShift registry') {
             steps {
                 withCredentials([string(credentialsId: 'openshift-ci-token', variable: 'OPENSHIFT_TOKEN')]) {
-                    sh '''
+                    sh '''#!/usr/bin/env bash
                         set -euo pipefail
                         export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
                         REGISTRY_AUTH_FILE="${WORKSPACE}/.podman-auth.json"
@@ -102,7 +103,7 @@ EOF_IMAGESTREAM
 
         stage('Deploy from integrated registry') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                     set -euo pipefail
                     export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
 

@@ -67,6 +67,7 @@ ssh "${SSH_OPTS[@]}" "ubuntu@${JENKINS_FLOATING_IP}" \
   "$JENKINS_SMOKE_JOB" \
   "$JENKINS_BUILD_TIMEOUT_SECONDS" <<'PY'
 import base64
+import http.cookiejar
 import json
 import pathlib
 import sys
@@ -80,6 +81,10 @@ timeout = int(timeout_raw)
 credentials = pathlib.Path(auth_file).read_text().strip()
 auth = base64.b64encode(credentials.encode()).decode()
 base_headers = {"Authorization": f"Basic {auth}"}
+# Jenkins' default crumb issuer can bind the crumb to the HTTP session.
+# Keep cookies (notably JSESSIONID) between the crumb request and the POST.
+cookie_jar = http.cookiejar.CookieJar()
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
 
 
 def request_json(url, method="GET", headers=None):
@@ -87,7 +92,7 @@ def request_json(url, method="GET", headers=None):
     if headers:
         request_headers.update(headers)
     req = urllib.request.Request(url, headers=request_headers, method=method)
-    with urllib.request.urlopen(req, timeout=15) as response:
+    with opener.open(req, timeout=15) as response:
         body = response.read()
         return response, json.loads(body.decode()) if body else None
 
@@ -107,7 +112,7 @@ req = urllib.request.Request(
     method="POST",
 )
 try:
-    with urllib.request.urlopen(req, timeout=15) as response:
+    with opener.open(req, timeout=15) as response:
         queue_url = response.headers.get("Location")
 except urllib.error.HTTPError as exc:
     raise SystemExit(f"Unable to trigger Jenkins job: HTTP {exc.code}: {exc.read().decode(errors='replace')}")
@@ -139,7 +144,7 @@ while time.monotonic() < deadline:
             console_url = f"{base_url}/job/{job_path}/{build_number}/consoleText"
             try:
                 req = urllib.request.Request(console_url, headers=base_headers)
-                with urllib.request.urlopen(req, timeout=15) as response:
+                with opener.open(req, timeout=15) as response:
                     text = response.read().decode(errors="replace")
                 print("----- Jenkins console tail -----")
                 print("\n".join(text.splitlines()[-120:]))
