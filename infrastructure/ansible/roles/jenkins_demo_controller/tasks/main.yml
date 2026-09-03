@@ -1,0 +1,73 @@
+---
+- name: Validate demo-3tier Jenkins controller inputs
+  ansible.builtin.assert:
+    that:
+      - jenkins_demo_admin_username is string
+      - jenkins_demo_admin_username | length > 0
+      - jenkins_demo_admin_password is string
+      - jenkins_demo_admin_password | length >= 16
+      - jenkins_demo_pipeline_definition is string
+      - jenkins_demo_pipeline_definition | length > 0
+      - jenkins_demo_registry_host is string
+      - jenkins_demo_registry_host | length > 0
+      - jenkins_demo_public_host is string
+      - jenkins_demo_public_host | length > 0
+      - jenkins_demo_repository_url is match('^https://')
+    fail_msg: "demo-3tier Jenkins registration requires admin auth, pipeline source, registry/public hosts and a public Git repository URL."
+  no_log: true
+
+- name: Ensure Jenkins CLI is available for demo-3tier registration
+  ansible.builtin.get_url:
+    url: "http://127.0.0.1:8080/jnlpJars/jenkins-cli.jar"
+    dest: "{{ jenkins_demo_cli_jar }}"
+    owner: root
+    group: root
+    mode: "0644"
+    url_username: "{{ jenkins_demo_admin_username }}"
+    url_password: "{{ jenkins_demo_admin_password }}"
+    force_basic_auth: true
+  no_log: true
+
+- name: Reconcile managed demo-3tier Jenkins job
+  block:
+    - name: Create runtime-only demo Jenkins registration directory
+      ansible.builtin.file:
+        path: "{{ jenkins_demo_runtime_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Write runtime-only Jenkins administrator authentication for demo job
+      ansible.builtin.copy:
+        content: "{{ jenkins_demo_admin_username }}:{{ jenkins_demo_admin_password }}\n"
+        dest: "{{ jenkins_demo_runtime_dir }}/cli-auth"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Create or update demo-3tier Jenkins job
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/java
+          - -jar
+          - "{{ jenkins_demo_cli_jar }}"
+          - -s
+          - http://127.0.0.1:8080/
+          - -http
+          - -auth
+          - "@{{ jenkins_demo_runtime_dir }}/cli-auth"
+          - groovy
+          - "="
+        stdin: "{{ lookup('ansible.builtin.template', role_path + '/templates/register-demo-job.groovy.j2') }}"
+      register: jenkins_demo_registration
+      changed_when: "'JOB_CHANGED=true' in jenkins_demo_registration.stdout"
+      no_log: true
+
+  always:
+    - name: Remove runtime-only demo Jenkins registration secrets
+      ansible.builtin.file:
+        path: "{{ jenkins_demo_runtime_dir }}"
+        state: absent
+      no_log: true

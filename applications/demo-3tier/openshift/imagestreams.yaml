@@ -1,0 +1,15 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: demo-frontend
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: demo-3tier
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: demo-backend
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: demo-3tier

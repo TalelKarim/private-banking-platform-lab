@@ -83,7 +83,16 @@ make list-postgresql-backups
 make test-postgresql-restore
 make restore-postgresql BACKUP=latest TARGET_DB=portfolio_restore_manual
 make configure-edge-gateway JENKINS_FLOATING_IP=192.168.250.x
+make configure-openshift-cicd
+make test-openshift-cicd
+make configure-demo-3tier
+make deploy-demo-3tier
+make test-demo-3tier
 ```
+
+## demo-3tier learning workload
+
+The first real OpenShift workload is under `applications/demo-3tier/`. It uses raw YAML and a Jenkins-managed build/deploy pipeline to make the Kubernetes/OpenShift request path visible before introducing Helm. The public lab URL is `https://demo.apps.okd.lab.talelkarimchebbi.com`; it reuses the existing wildcard Route53/ACM/ALB/edge-gateway ingress and remains limited by the ALB lab-client Security Group. See `docs/openshift-demo-3tier-phase3.md`.
 
 ## Repository structure
 
@@ -100,6 +109,7 @@ private-banking-platform-lab/
 │   └── openstack/
 │       └── kolla/
 ├── applications/
+│   ├── demo-3tier/
 │   ├── portfolio-java/
 │   └── risk-engine-dotnet/
 ├── cicd/

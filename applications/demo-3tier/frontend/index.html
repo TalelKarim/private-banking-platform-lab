@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Private Banking Platform Lab</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">OPENSHIFT LEARNING WORKLOAD</p>
+      <h1>Private Banking Portfolio</h1>
+      <p class="subtitle">Browser → Route → Frontend → Backend Service → PostgreSQL → Cinder</p>
+      <button id="refresh" type="button">Refresh portfolio</button>
+    </section>
+
+    <section class="status-grid">
+      <article><span>Frontend</span><strong id="frontend-status">READY</strong></article>
+      <article><span>Backend pod</span><strong id="backend-pod">loading…</strong></article>
+      <article><span>Database</span><strong id="database">loading…</strong></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Positions</h2>
+        <span id="total">—</span>
+      </div>
+      <div id="error" class="error" hidden></div>
+      <table>
+        <thead><tr><th>Symbol</th><th>Quantity</th><th>Price</th><th>Market value</th></tr></thead>
+        <tbody id="positions"></tbody>
+      </table>
+    </section>
+
+    <section class="flow">
+      <code>Route</code><span>→</span><code>frontend Service</code><span>→</span><code>Nginx</code><span>→</span><code>backend Service</code><span>→</span><code>PostgreSQL</code><span>→</span><code>PVC/Cinder</code>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
