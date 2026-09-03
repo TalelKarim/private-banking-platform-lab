@@ -83,6 +83,22 @@
       group: "{{ jenkins_agent_group }}"
       mode: "0750"
 
+- name: Configure deterministic rootless Podman cgroup handling for Jenkins
+  ansible.builtin.copy:
+    dest: "{{ jenkins_agent_remote_fs }}/.config/containers/containers.conf"
+    owner: "{{ jenkins_agent_user }}"
+    group: "{{ jenkins_agent_group }}"
+    mode: "0640"
+    content: |
+      # Jenkins is a non-interactive system-service account. Using the default
+      # systemd cgroup manager makes crun try to open a user/systemd DBus scope
+      # during Containerfile RUN steps and can fail with:
+      #   sd-bus call: Interactive authentication required
+      # cgroupfs is the deterministic rootless backend for this CI worker.
+      [engine]
+      cgroup_manager = "{{ jenkins_openshift_rootless_cgroup_manager }}"
+      events_logger = "file"
+
 - name: Configure private split-horizon names for OpenShift API and registry
   ansible.builtin.blockinfile:
     path: /etc/hosts
@@ -235,6 +251,26 @@
   register: jenkins_openshift_podman_rootless
   changed_when: false
   failed_when: jenkins_openshift_podman_rootless.stdout | trim != 'true'
+
+- name: Verify Jenkins rootless Podman uses cgroupfs without a user systemd session
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/podman
+      - info
+      - --format
+      - "{{ '{{.Host.CgroupManager}}' }}"
+  become: true
+  become_user: "{{ jenkins_agent_user }}"
+  environment:
+    HOME: "{{ jenkins_agent_remote_fs }}"
+    XDG_RUNTIME_DIR: "{{ jenkins_agent_remote_fs }}/.run"
+    XDG_CONFIG_HOME: "{{ jenkins_agent_remote_fs }}/.config"
+    XDG_DATA_HOME: "{{ jenkins_agent_remote_fs }}/.local/share"
+  register: jenkins_openshift_podman_cgroup_manager
+  changed_when: false
+  failed_when: >-
+    jenkins_openshift_podman_cgroup_manager.stdout | trim !=
+    jenkins_openshift_rootless_cgroup_manager
 
 - name: Verify Buildah on Jenkins worker
   ansible.builtin.command:
