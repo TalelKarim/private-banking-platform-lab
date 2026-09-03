@@ -102,11 +102,34 @@ pipeline {
                             --password-stdin \
                             "${OPENSHIFT_REGISTRY}"
 
+                        push_with_retry() {
+                          local image=$1
+                          local attempts=4
+                          local attempt
+                          local delay
+
+                          for attempt in $(seq 1 "${attempts}"); do
+                            echo "Pushing ${image} (attempt ${attempt}/${attempts})"
+                            if podman push --authfile "${REGISTRY_AUTH_FILE}" "${image}"; then
+                              return 0
+                            fi
+
+                            if [ "${attempt}" -eq "${attempts}" ]; then
+                              echo "Registry push failed after ${attempts} attempts: ${image}" >&2
+                              return 1
+                            fi
+
+                            delay=$((attempt * 10))
+                            echo "Registry push failed; retrying in ${delay}s..." >&2
+                            sleep "${delay}"
+                          done
+                        }
+
                         for component in frontend backend; do
                           local_image="demo-${component}:${IMAGE_TAG}"
                           target="${OPENSHIFT_REGISTRY}/${OPENSHIFT_NAMESPACE}/demo-${component}:${IMAGE_TAG}"
                           podman tag "${local_image}" "${target}"
-                          podman push --authfile "${REGISTRY_AUTH_FILE}" "${target}"
+                          push_with_retry "${target}"
                         done
                     '''
                 }

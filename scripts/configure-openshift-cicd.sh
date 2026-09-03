@@ -18,6 +18,7 @@ RUNTIME_DIR="$ROOT_DIR/.runtime/openshift/cicd"
 TOKEN_FILE="$RUNTIME_DIR/jenkins-token"
 API_CA_FILE="$RUNTIME_DIR/api-ca.crt"
 INGRESS_CA_FILE="$RUNTIME_DIR/ingress-ca.crt"
+REGISTRY_ROUTE_TIMEOUT=${REGISTRY_ROUTE_TIMEOUT:-5m}
 
 for binary in oc jq base64 curl openssl "$ANSIBLE_PYTHON" "$ANSIBLE_PLAYBOOK"; do
   if [[ "$binary" == */* ]]; then
@@ -94,6 +95,20 @@ done
 [[ -n "$REGISTRY_HOST" ]] || { echo "Registry default Route was not created." >&2; exit 1; }
 [[ "$REGISTRY_HOST" == "$EXPECTED_REGISTRY_HOST" ]] || {
   echo "Unexpected registry Route host: $REGISTRY_HOST (expected $EXPECTED_REGISTRY_HOST)." >&2
+  exit 1
+}
+
+# Registry uploads can be much longer than ordinary application HTTP requests.
+# The demo backend image includes the Python runtime and can exceed the router's
+# default backend timeout on this nested OpenStack lab. Keep the registry on the
+# private route, but give each upload request enough time to finish.
+oc annotate route default-route -n openshift-image-registry \
+  "haproxy.router.openshift.io/timeout=${REGISTRY_ROUTE_TIMEOUT}" \
+  --overwrite >/dev/null
+ACTUAL_REGISTRY_TIMEOUT=$(oc get route default-route -n openshift-image-registry \
+  -o jsonpath='{.metadata.annotations.haproxy\.router\.openshift\.io/timeout}')
+[[ "$ACTUAL_REGISTRY_TIMEOUT" == "$REGISTRY_ROUTE_TIMEOUT" ]] || {
+  echo "Registry Route timeout was not reconciled (got '$ACTUAL_REGISTRY_TIMEOUT', expected '$REGISTRY_ROUTE_TIMEOUT')." >&2
   exit 1
 }
 
