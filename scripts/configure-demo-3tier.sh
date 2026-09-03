@@ -58,6 +58,10 @@ oc get rolebinding jenkins-deployer jenkins-image-builder private-banking-image-
   echo "Jenkins cannot create PVCs in $DEMO_NAMESPACE." >&2
   exit 1
 }
+[[ "$(oc auth can-i --as=system:serviceaccount:cicd:jenkins create routes.route.openshift.io/custom-host -n "$DEMO_NAMESPACE")" == "yes" ]] || {
+  echo "Jenkins cannot create a Route with an explicit host in $DEMO_NAMESPACE." >&2
+  exit 1
+}
 [[ -n "$REGISTRY_HOST" ]] || { echo "OpenShift registry Route is missing." >&2; exit 1; }
 
 printf '[2/5] Ensuring runtime-only PostgreSQL application credentials...\n'

@@ -31,6 +31,14 @@ rules:
   - apiGroups: ["route.openshift.io"]
     resources: ["routes", "routes/status"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # OpenShift protects user-selected Route hosts with a separate virtual
+  # subresource. The normal `routes` create permission is not sufficient when
+  # spec.host is explicitly set (demo.apps...). Grant this only through the
+  # existing RoleBinding in namespace demo, so Jenkins still has no cluster-wide
+  # route administration.
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes/custom-host"]
+    verbs: ["create", "update"]
   - apiGroups: ["image.openshift.io"]
     resources: ["imagestreams", "imagestreamtags"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
