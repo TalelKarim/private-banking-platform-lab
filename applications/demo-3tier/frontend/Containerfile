@@ -1,0 +1,11 @@
+FROM quay.io/sclorg/nginx-124-c9s:latest
+
+# The SCL.org Nginx image is designed for OpenShift's arbitrary non-root UID
+# model. Feed the application through its S2I assemble script so static assets
+# and Nginx snippets land in the supported runtime paths with safe permissions.
+COPY --chown=1001:0 index.html app.js styles.css /tmp/src/
+COPY --chown=1001:0 nginx-default-cfg /tmp/src/nginx-default-cfg
+RUN /usr/libexec/s2i/assemble
+
+EXPOSE 8080
+CMD ["/usr/libexec/s2i/run"]

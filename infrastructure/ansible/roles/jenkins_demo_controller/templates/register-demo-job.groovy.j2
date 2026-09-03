@@ -1,0 +1,43 @@
+import hudson.model.Result
+import jenkins.model.Jenkins
+import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition
+import org.jenkinsci.plugins.workflow.job.WorkflowJob
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
+Jenkins jenkins = Jenkins.get()
+String jobName = {{ jenkins_demo_job_name | to_json }}
+String jobDescription = {{ jenkins_demo_job_description | to_json }}
+String registryHost = {{ jenkins_demo_registry_host | to_json }}
+String publicHost = {{ jenkins_demo_public_host | to_json }}
+String repositoryUrl = {{ jenkins_demo_repository_url | to_json }}
+String pipelineScript = new String(
+    Base64.getDecoder().decode({{ jenkins_demo_pipeline_definition | b64encode | to_json }}),
+    StandardCharsets.UTF_8
+)
+    .replace("OPENSHIFT_REGISTRY_PLACEHOLDER", registryHost)
+    .replace("DEMO_PUBLIC_HOST_PLACEHOLDER", publicHost)
+    .replace("DEMO_REPOSITORY_URL_PLACEHOLDER", repositoryUrl)
+
+WorkflowJob job = jenkins.getItemByFullName(jobName) as WorkflowJob
+boolean jobChanged = false
+if (job == null) {
+    job = jenkins.createProject(WorkflowJob.class, jobName)
+    jobChanged = true
+}
+if (job.getDescription() != jobDescription) {
+    job.setDescription(jobDescription)
+    jobChanged = true
+}
+def existingDefinition = job.getDefinition()
+if (!(existingDefinition instanceof CpsFlowDefinition)
+        || existingDefinition.getScript() != pipelineScript
+        || !existingDefinition.isSandbox()) {
+    job.setDefinition(new CpsFlowDefinition(pipelineScript, true))
+    jobChanged = true
+}
+job.save()
+jenkins.save()
+
+println("JOB_CHANGED=" + jobChanged)
+println("DEMO_JOB=" + job.fullName)

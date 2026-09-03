@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-backend
+  namespace: demo
+  labels:
+    app: demo-backend
+    app.kubernetes.io/part-of: demo-3tier
+spec:
+  selector:
+    app: demo-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-backend
+  namespace: demo
+  labels:
+    app: demo-backend
+    app.kubernetes.io/part-of: demo-3tier
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demo-backend
+  template:
+    metadata:
+      labels:
+        app: demo-backend
+        tier: backend
+        app.kubernetes.io/part-of: demo-3tier
+    spec:
+      containers:
+        - name: backend
+          image: __BACKEND_IMAGE__
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: demo-backend-config
+            - secretRef:
+                name: demo-postgres-credentials
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi

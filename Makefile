@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime recover-openstack-guests configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation configure-openshift-storage configure-openshift-registry configure-openshift-cicd test-openshift-cicd cleanup-openshift-storage status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime recover-openstack-guests configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation configure-openshift-storage configure-openshift-registry configure-openshift-cicd test-openshift-cicd configure-demo-3tier deploy-demo-3tier test-demo-3tier cleanup-openshift-storage status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
@@ -32,6 +32,9 @@ help:
 	  'configure-openshift-registry Put integrated registry on persistent Cinder-backed storage' \
 	  'configure-openshift-cicd Build the private Jenkins -> API/registry bridge + RBAC' \
 	  'test-openshift-cicd Run Jenkins build -> registry push -> OpenShift deploy smoke test' \
+	  'configure-demo-3tier Register demo app job + generated DB Secret' \
+	  'deploy-demo-3tier    Trigger Jenkins build/push/deploy for the demo application' \
+	  'test-demo-3tier      Validate Route -> frontend -> backend -> PostgreSQL -> Cinder' \
 	  'cleanup-openshift-storage Reclaim registry/Cinder volumes before OKD VM destroy' \
 	  'status-okd-nodes      Show Nova status/fixed IPs for OKD runtime machines' \
 	  'destroy-okd-nodes     Destroy only bootstrap + compact control-plane VMs' \
@@ -140,6 +143,15 @@ configure-openshift-cicd:
 
 test-openshift-cicd:
 	./scripts/test-openshift-cicd.sh "$(JENKINS_FLOATING_IP)"
+
+configure-demo-3tier:
+	./scripts/configure-demo-3tier.sh "$(JENKINS_FLOATING_IP)"
+
+deploy-demo-3tier:
+	./scripts/deploy-demo-3tier.sh "$(JENKINS_FLOATING_IP)"
+
+test-demo-3tier:
+	./scripts/test-demo-3tier.sh
 
 cleanup-openshift-storage:
 	./scripts/cleanup-openshift-storage.sh

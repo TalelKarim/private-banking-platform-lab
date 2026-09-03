@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-postgres
+  namespace: demo
+  labels:
+    app: demo-postgres
+    app.kubernetes.io/part-of: demo-3tier
+spec:
+  clusterIP: None
+  selector:
+    app: demo-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: demo-postgres
+  namespace: demo
+  labels:
+    app: demo-postgres
+    app.kubernetes.io/part-of: demo-3tier
+spec:
+  serviceName: demo-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-postgres
+  template:
+    metadata:
+      labels:
+        app: demo-postgres
+        tier: database
+        app.kubernetes.io/part-of: demo-3tier
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: quay.io/sclorg/postgresql-16-c9s:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: demo-postgres-credentials
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["/bin/bash", "-ec", "pg_isready -h 127.0.0.1 -p 5432 -U \"${POSTGRESQL_USER}\" -d \"${POSTGRESQL_DATABASE}\""]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["/bin/bash", "-ec", "pg_isready -h 127.0.0.1 -p 5432 -U \"${POSTGRESQL_USER}\" -d \"${POSTGRESQL_DATABASE}\""]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/pgsql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app: demo-postgres
+          app.kubernetes.io/part-of: demo-3tier
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: cinder-standard
+        resources:
+          requests:
+            storage: 5Gi

@@ -1,0 +1,235 @@
+pipeline {
+    agent { label 'lab-worker' }
+
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    environment {
+        OPENSHIFT_API = 'https://api.okd.lab.talelkarimchebbi.com:6443'
+        OPENSHIFT_NAMESPACE = 'demo'
+        OPENSHIFT_REGISTRY = 'OPENSHIFT_REGISTRY_PLACEHOLDER'
+        OPENSHIFT_API_CA = '/etc/jenkins-agent/openshift/api-ca.crt'
+        DEMO_PUBLIC_HOST = 'DEMO_PUBLIC_HOST_PLACEHOLDER'
+        DEMO_REPOSITORY_URL = 'DEMO_REPOSITORY_URL_PLACEHOLDER'
+        DEMO_GIT_BRANCH = 'main'
+        JENKINS_AGENT_HOME = '/var/lib/jenkins-agent'
+    }
+
+    stages {
+        stage('Checkout source') {
+            steps {
+                deleteDir()
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export HOME="${JENKINS_AGENT_HOME}"
+                    echo "Cloning ${DEMO_REPOSITORY_URL} (${DEMO_GIT_BRANCH})"
+                    # Force HTTP/1.1 for this public GitHub checkout because the lab
+                    # has already observed intermittent HTTP/2 Basic-auth challenges.
+                    git -c http.version=HTTP/1.1 clone \
+                      --depth 1 \
+                      --branch "${DEMO_GIT_BRANCH}" \
+                      "${DEMO_REPOSITORY_URL}" .
+                '''
+                script {
+                    env.IMAGE_TAG = sh(
+                        script: 'git rev-parse --short=12 HEAD',
+                        returnStdout: true
+                    ).trim()
+                    echo "Immutable application source tag: ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('Authenticate to OpenShift') {
+            steps {
+                withCredentials([string(credentialsId: 'openshift-ci-token', variable: 'OPENSHIFT_TOKEN')]) {
+                    sh '''#!/usr/bin/env bash
+                        set -euo pipefail
+                        export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                        rm -f "${KUBECONFIG}"
+                        oc login "${OPENSHIFT_API}" \
+                          --token="${OPENSHIFT_TOKEN}" \
+                          --certificate-authority="${OPENSHIFT_API_CA}" >/dev/null
+
+                        identity=$(oc whoami)
+                        echo "OpenShift identity: ${identity}"
+                        test "${identity}" = "system:serviceaccount:cicd:jenkins"
+                        test "$(oc auth can-i create deployments -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i create statefulsets.apps -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i create persistentvolumeclaims -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i create routes.route.openshift.io -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        if oc auth can-i get nodes >/dev/null 2>&1; then
+                          echo 'Jenkins unexpectedly has cluster-wide node read access.' >&2
+                          exit 1
+                        fi
+                    '''
+                }
+            }
+        }
+
+        stage('Build frontend and backend') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export HOME="${JENKINS_AGENT_HOME}"
+                    podman build --format docker \
+                      -t "demo-frontend:${IMAGE_TAG}" \
+                      applications/demo-3tier/frontend
+                    podman build --format docker \
+                      -t "demo-backend:${IMAGE_TAG}" \
+                      applications/demo-3tier/backend
+                '''
+            }
+        }
+
+        stage('Push images to OpenShift registry') {
+            steps {
+                withCredentials([string(credentialsId: 'openshift-ci-token', variable: 'OPENSHIFT_TOKEN')]) {
+                    sh '''#!/usr/bin/env bash
+                        set -euo pipefail
+                        export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                        export HOME="${JENKINS_AGENT_HOME}"
+                        REGISTRY_AUTH_FILE="${WORKSPACE}/.podman-auth.json"
+
+                        oc apply -f applications/demo-3tier/openshift/imagestreams.yaml
+
+                        printf '%s' "${OPENSHIFT_TOKEN}" | \
+                          podman login \
+                            --authfile "${REGISTRY_AUTH_FILE}" \
+                            --username serviceaccount \
+                            --password-stdin \
+                            "${OPENSHIFT_REGISTRY}"
+
+                        for component in frontend backend; do
+                          local_image="demo-${component}:${IMAGE_TAG}"
+                          target="${OPENSHIFT_REGISTRY}/${OPENSHIFT_NAMESPACE}/demo-${component}:${IMAGE_TAG}"
+                          podman tag "${local_image}" "${target}"
+                          podman push --authfile "${REGISTRY_AUTH_FILE}" "${target}"
+                        done
+                    '''
+                }
+            }
+        }
+
+        stage('Resolve immutable image digests') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+
+                    resolve_ref() {
+                      local tag=$1
+                      local output=$2
+                      local digest_ref=''
+                      for attempt in $(seq 1 60); do
+                        digest_ref=$(oc get istag "${tag}" -n "${OPENSHIFT_NAMESPACE}" \
+                          -o jsonpath='{.image.dockerImageReference}' 2>/dev/null || true)
+                        [ -n "${digest_ref}" ] && break
+                        sleep 2
+                      done
+                      test -n "${digest_ref}"
+                      printf '%s\n' "${digest_ref}" > "${output}"
+                    }
+
+                    resolve_ref "demo-frontend:${IMAGE_TAG}" "${WORKSPACE}/.frontend-image-ref"
+                    resolve_ref "demo-backend:${IMAGE_TAG}" "${WORKSPACE}/.backend-image-ref"
+                    echo "Frontend: $(cat "${WORKSPACE}/.frontend-image-ref")"
+                    echo "Backend : $(cat "${WORKSPACE}/.backend-image-ref")"
+                '''
+            }
+        }
+
+        stage('Deploy PostgreSQL') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                    oc get secret demo-postgres-credentials -n "${OPENSHIFT_NAMESPACE}" >/dev/null
+                    oc apply -f applications/demo-3tier/openshift/configmap.yaml
+                    oc apply -f applications/demo-3tier/openshift/postgres.yaml
+                    oc rollout status statefulset/demo-postgres \
+                      -n "${OPENSHIFT_NAMESPACE}" --timeout=8m
+                    oc get pvc -n "${OPENSHIFT_NAMESPACE}" -l app=demo-postgres
+                '''
+            }
+        }
+
+        stage('Deploy backend and frontend') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                    frontend_image=$(cat "${WORKSPACE}/.frontend-image-ref")
+                    backend_image=$(cat "${WORKSPACE}/.backend-image-ref")
+
+                    sed "s|__BACKEND_IMAGE__|${backend_image}|g" \
+                      applications/demo-3tier/openshift/backend.yaml | oc apply -f -
+                    oc rollout status deployment/demo-backend \
+                      -n "${OPENSHIFT_NAMESPACE}" --timeout=8m
+
+                    sed "s|__FRONTEND_IMAGE__|${frontend_image}|g" \
+                      applications/demo-3tier/openshift/frontend.yaml | oc apply -f -
+                    sed "s|__DEMO_PUBLIC_HOST__|${DEMO_PUBLIC_HOST}|g" \
+                      applications/demo-3tier/openshift/route.yaml | oc apply -f -
+                    oc rollout status deployment/demo-frontend \
+                      -n "${OPENSHIFT_NAMESPACE}" --timeout=5m
+                '''
+            }
+        }
+
+        stage('End-to-end application validation') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+
+                    test "$(oc get route demo-3tier -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.spec.host}')" = "${DEMO_PUBLIC_HOST}"
+                    test "$(oc get pvc postgres-data-demo-postgres-0 -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.status.phase}')" = "Bound"
+
+                    # Create a short-lived test Pod instead of granting Jenkins
+                    # pods/exec. It calls the FRONTEND Service, so the request crosses
+                    # frontend Service -> Nginx -> backend Service -> PostgreSQL.
+                    backend_image=$(cat "${WORKSPACE}/.backend-image-ref")
+                    test_pod="demo-e2e"
+                    oc delete pod "${test_pod}" -n "${OPENSHIFT_NAMESPACE}" --ignore-not-found >/dev/null
+                    oc run "${test_pod}" -n "${OPENSHIFT_NAMESPACE}" \
+                      --image="${backend_image}" \
+                      --restart=Never \
+                      --command -- \
+                      python -c 'import json,urllib.request; p=json.load(urllib.request.urlopen("http://demo-frontend/api/portfolio", timeout=10)); assert p["application"] == "private-banking-demo-3tier"; assert len(p["positions"]) >= 4; print(json.dumps(p, indent=2))'
+                    phase=''
+                    for attempt in $(seq 1 60); do
+                      phase=$(oc get pod "${test_pod}" -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.status.phase}')
+                      [ "${phase}" = "Succeeded" ] && break
+                      if [ "${phase}" = "Failed" ]; then
+                        oc logs "${test_pod}" -n "${OPENSHIFT_NAMESPACE}" || true
+                        exit 1
+                      fi
+                      sleep 2
+                    done
+                    test "${phase}" = "Succeeded"
+                    oc logs "${test_pod}" -n "${OPENSHIFT_NAMESPACE}"
+                    oc delete pod "${test_pod}" -n "${OPENSHIFT_NAMESPACE}" --wait=false >/dev/null
+
+                    oc get deployment,statefulset,service,route -n "${OPENSHIFT_NAMESPACE}" \
+                      -l app.kubernetes.io/part-of=demo-3tier
+                    oc get pods -n "${OPENSHIFT_NAMESPACE}" -l app.kubernetes.io/part-of=demo-3tier -o wide
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            sh '''
+                rm -f \
+                  "${WORKSPACE}/.openshift-kubeconfig" \
+                  "${WORKSPACE}/.podman-auth.json" \
+                  "${WORKSPACE}/.frontend-image-ref" \
+                  "${WORKSPACE}/.backend-image-ref" || true
+            '''
+        }
+    }
+}

@@ -1,0 +1,13 @@
+FROM registry.access.redhat.com/ubi9/python-312:latest
+
+USER 0
+COPY requirements.txt /opt/app-root/src/requirements.txt
+RUN pip install --no-cache-dir -r /opt/app-root/src/requirements.txt
+COPY app.py /opt/app-root/src/app.py
+# OpenShift assigns an arbitrary non-root UID. Group 0 ownership + g=u is the
+# standard OpenShift-compatible permission pattern for writable app paths.
+RUN chgrp -R 0 /opt/app-root/src && chmod -R g=u /opt/app-root/src
+USER 1001
+
+EXPOSE 8080
+CMD ["python", "/opt/app-root/src/app.py"]

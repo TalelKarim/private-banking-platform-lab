@@ -1,0 +1,11 @@
+---
+jenkins_demo_admin_username: admin
+jenkins_demo_admin_password: null
+jenkins_demo_cli_jar: /var/cache/jenkins/jenkins-cli.jar
+jenkins_demo_runtime_dir: /run/jenkins-demo-registration
+jenkins_demo_job_name: demo-3tier-deploy
+jenkins_demo_job_description: "Build and deploy the learning demo-3tier application to OKD"
+jenkins_demo_pipeline_definition: null
+jenkins_demo_registry_host: null
+jenkins_demo_public_host: null
+jenkins_demo_repository_url: null
