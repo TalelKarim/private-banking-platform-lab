@@ -21,3 +21,7 @@ jenkins_openshift_packages:
   - jq
 jenkins_openshift_rootless_subuid_start: 200000
 jenkins_openshift_rootless_subuid_count: 65536
+# Jenkins runs as a systemd system-service user, not an interactive login.
+# Force rootless containers to cgroupfs so Podman/crun never needs a user
+# systemd/DBus session for build RUN steps.
+jenkins_openshift_rootless_cgroup_manager: cgroupfs
