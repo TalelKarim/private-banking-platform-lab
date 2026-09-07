@@ -79,7 +79,7 @@ resource "aws_vpc_security_group_egress_rule" "edge_gateway_all_ipv4" {
 }
 
 resource "aws_instance" "edge_gateway" {
-  ami           = data.aws_ssm_parameter.ubuntu_2404_ami.value
+  ami           = var.edge_gateway_ami_id != null ? var.edge_gateway_ami_id : data.aws_ssm_parameter.ubuntu_2404_ami.value
   instance_type = var.edge_gateway_instance_type
   subnet_id     = data.aws_subnet.selected.id
   private_ip    = var.edge_gateway_private_ip

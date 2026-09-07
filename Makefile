@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime recover-openstack-guests configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation configure-openshift-storage configure-openshift-registry configure-openshift-cicd test-openshift-cicd configure-demo-3tier deploy-demo-3tier test-demo-3tier cleanup-openshift-storage status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami activate-golden-ami deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime recover-openstack-guests configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation configure-openshift-storage configure-openshift-registry configure-openshift-cicd test-openshift-cicd configure-demo-3tier deploy-demo-3tier test-demo-3tier cleanup-openshift-storage status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami bake-lab-ready-ami bake-edge-gateway-ami activate-golden-ami activate-ready-amis deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
@@ -48,8 +48,11 @@ help:
 	  'reconfigure-openstack Apply Kolla configuration changes' \
 	  'stop-openstack        Stop the OpenStack containers' \
 	  'prepare-golden-ami   Clean test workloads and prepare the current EC2 for baking' \
-	  'bake-golden-ami      Stop the source EC2 and create a 3-volume Golden AMI from the Mac' \
+	  'bake-golden-ami      Stop the source EC2 and create a 3-volume clean Golden AMI from the Mac' \
+	  'bake-lab-ready-ami  Stop the current lab-host and create a 3-volume ready checkpoint AMI' \
+	  'bake-edge-gateway-ami Stop the current edge-gateway and create a configured root AMI' \
 	  'activate-golden-ami  Write local Terraform Golden mode (AMI_ID=ami-...)' \
+	  'activate-ready-amis  Write local Terraform Ready mode for lab-host + edge-gateway AMIs' \
 	  'deactivate-golden-ami Return Terraform to stock-Ubuntu bootstrap mode'
 
 bootstrap-ansible:
@@ -99,7 +102,7 @@ recover-openstack-guests:
 	./scripts/recover-openstack-guests.sh
 
 configure-okd-client-access:
-	@test -n "$(OKD_LB_FLOATING_IP)" || (echo "Usage: make configure-okd-client-access OKD_LB_FLOATING_IP=192.168.250.x" >&2; exit 2)
+	@test -n "$(OKD_LB_FLOATING_IP" || (echo "Usage: make configure-okd-client-access OKD_LB_FLOATING_IP=192.168.250.x" >&2; exit 2)
 	./scripts/configure-okd-client-access.sh "$(OKD_LB_FLOATING_IP)"
 
 configure-okd-lb:
@@ -200,9 +203,20 @@ prepare-golden-ami:
 bake-golden-ami:
 	./scripts/bake-golden-ami.sh
 
+bake-lab-ready-ami:
+	./scripts/bake-lab-ready-ami.sh
+
+bake-edge-gateway-ami:
+	./scripts/bake-edge-gateway-ami.sh
+
 activate-golden-ami:
 	@test -n "$(AMI_ID)" || (echo "Usage: make activate-golden-ami AMI_ID=ami-..." >&2; exit 2)
 	./scripts/activate-golden-ami.sh "$(AMI_ID)"
+
+activate-ready-amis:
+	@test -n "$(LAB_HOST_AMI_ID)" || (echo "Usage: make activate-ready-amis LAB_HOST_AMI_ID=ami-... EDGE_GATEWAY_AMI_ID=ami-..." >&2; exit 2)
+	@test -n "$(EDGE_GATEWAY_AMI_ID)" || (echo "Usage: make activate-ready-amis LAB_HOST_AMI_ID=ami-... EDGE_GATEWAY_AMI_ID=ami-..." >&2; exit 2)
+	./scripts/activate-ready-amis.sh "$(LAB_HOST_AMI_ID)" "$(EDGE_GATEWAY_AMI_ID)"
 
 deactivate-golden-ami:
 	./scripts/deactivate-golden-ami.sh

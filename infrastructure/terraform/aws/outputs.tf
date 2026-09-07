@@ -196,6 +196,12 @@ output "edge_gateway_public_ip" {
   value       = aws_eip.edge_gateway.public_ip
 }
 
+output "edge_gateway_effective_ami_id" {
+  description = "AMI currently selected for the edge gateway"
+  value       = var.edge_gateway_ami_id != null ? var.edge_gateway_ami_id : data.aws_ssm_parameter.ubuntu_2404_ami.value
+  sensitive   = true
+}
+
 output "edge_gateway_http_url" {
   description = "Direct edge EIP retained for administration/debug only; public web access uses the ALB"
   value       = "http://${aws_eip.edge_gateway.public_ip}"

@@ -221,6 +221,18 @@ variable "edge_gateway_root_volume_size" {
   }
 }
 
+variable "edge_gateway_ami_id" {
+  description = "Optional baked AMI for the edge gateway. Null keeps bootstrap mode on the stock Ubuntu AMI."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.edge_gateway_ami_id == null || can(regex("^ami-[0-9a-f]+$", var.edge_gateway_ami_id))
+    error_message = "edge_gateway_ami_id must be null or a valid AMI ID such as ami-0123456789abcdef0."
+  }
+}
+
 variable "edge_gateway_private_ip" {
   description = "Stable private IPv4 used by the edge gateway inside the selected AWS subnet"
   type        = string
