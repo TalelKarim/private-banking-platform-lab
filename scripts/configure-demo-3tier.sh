@@ -15,7 +15,7 @@ DEMO_REPOSITORY_URL=${DEMO_REPOSITORY_URL:-https://github.com/TalelKarim/private
 DEMO_NAMESPACE=${DEMO_NAMESPACE:-demo}
 DEMO_DB_SECRET=${DEMO_DB_SECRET:-demo-postgres-credentials}
 
-for binary in oc openssl jq "$ANSIBLE_PYTHON" "$ANSIBLE_PLAYBOOK"; do
+for binary in oc helm openssl jq "$ANSIBLE_PYTHON" "$ANSIBLE_PLAYBOOK"; do
   if [[ "$binary" == */* ]]; then
     [[ -x "$binary" ]] || { echo "Missing executable: $binary" >&2; exit 1; }
   else
@@ -62,6 +62,14 @@ oc get rolebinding jenkins-deployer jenkins-image-builder private-banking-image-
   echo "Jenkins cannot create a Route with an explicit host in $DEMO_NAMESPACE." >&2
   exit 1
 }
+[[ "$(oc auth can-i --as=system:serviceaccount:cicd:jenkins create resourcequotas -n "$DEMO_NAMESPACE")" == "yes" ]] || {
+  echo "Jenkins cannot create ResourceQuotas in $DEMO_NAMESPACE." >&2
+  exit 1
+}
+[[ "$(oc auth can-i --as=system:serviceaccount:cicd:jenkins create limitranges -n "$DEMO_NAMESPACE")" == "yes" ]] || {
+  echo "Jenkins cannot create LimitRanges in $DEMO_NAMESPACE." >&2
+  exit 1
+}
 [[ -n "$REGISTRY_HOST" ]] || { echo "OpenShift registry Route is missing." >&2; exit 1; }
 
 printf '[2/5] Ensuring runtime-only PostgreSQL application credentials...\n'
@@ -100,7 +108,11 @@ export ANSIBLE_CONFIG="$ANSIBLE_DIR/ansible.cfg"
     -e "jenkins_demo_repository_url=$DEMO_REPOSITORY_URL"
 )
 
-printf '[4/5] Verifying application storage and public-ingress prerequisites...\n'
+printf '[4/5] Verifying application storage, Helm chart and public-ingress prerequisites...\n'
+helm lint "$ROOT_DIR/applications/demo-3tier/helm/demo-3tier" \
+  --set-string frontend.image.ref="registry.local/demo/demo-frontend@sha256:demo" \
+  --set-string backend.image.ref="registry.local/demo/demo-backend@sha256:demo" \
+  --set-string route.host="$DEMO_PUBLIC_HOST" >/dev/null
 [[ "$(oc get storageclass cinder-standard -o jsonpath='{.provisioner}')" == "cinder.csi.openstack.org" ]] || {
   echo "cinder-standard is not backed by Cinder CSI." >&2
   exit 1
@@ -108,6 +120,7 @@ printf '[4/5] Verifying application storage and public-ingress prerequisites...\
 # The wildcard Route53/ALB/Nginx ingress was created before Phase 3. The app
 # only needs a normal OpenShift Route under that existing wildcard hostname.
 printf '    Persistent storage : cinder-standard\n'
+printf '    Helm chart         : applications/demo-3tier/helm/demo-3tier\n'
 printf '    Public Route host   : %s\n' "$DEMO_PUBLIC_HOST"
 
 printf '[5/5] Final Phase 3 configuration summary...\n'
@@ -116,6 +129,8 @@ printf '  %-28s %s\n' 'Jenkins job' 'demo-3tier-deploy'
 printf '  %-28s %s\n' 'Jenkins identity' 'system:serviceaccount:cicd:jenkins'
 printf '  %-28s %s\n' 'Application namespace' "$DEMO_NAMESPACE"
 printf '  %-28s %s\n' 'Database Secret' "$DEMO_DB_SECRET (generated)"
+printf '  %-28s %s\n' 'Deployment engine' 'Helm release demo-3tier'
+printf '  %-28s %s\n' 'Namespace policies' 'ResourceQuota + LimitRange managed by Helm'
 printf '  %-28s %s\n' 'Database storage' 'StatefulSet -> PVC -> cinder-standard'
 printf '  %-28s %s\n' 'Public application URL' "https://$DEMO_PUBLIC_HOST"
 printf '  %-28s %s\n' 'Source repository' "$DEMO_REPOSITORY_URL"

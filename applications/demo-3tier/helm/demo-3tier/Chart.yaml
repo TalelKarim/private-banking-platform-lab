@@ -1,0 +1,6 @@
+apiVersion: v2
+name: demo-3tier
+description: Helm chart for the Private Banking Platform Lab demo 3-tier application.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

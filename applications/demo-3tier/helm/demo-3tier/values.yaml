@@ -1,0 +1,103 @@
+# Default values for the demo-3tier lab application.
+# Jenkins overrides frontend.image.ref, backend.image.ref and route.host at deploy time.
+
+fullnameOverride: demo-3tier
+
+frontend:
+  replicaCount: 2
+  image:
+    ref: ""
+    pullPolicy: IfNotPresent
+  containerPort: 8080
+  service:
+    port: 80
+    targetPort: http
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 150m
+      memory: 128Mi
+
+backend:
+  replicaCount: 2
+  image:
+    ref: ""
+    pullPolicy: IfNotPresent
+  containerPort: 8080
+  service:
+    port: 8080
+    targetPort: http
+  config:
+    dbHost: demo-postgres
+    dbPort: "5432"
+    port: "8080"
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 192Mi
+
+postgres:
+  replicaCount: 1
+  image:
+    ref: quay.io/sclorg/postgresql-16-c9s:latest
+    pullPolicy: IfNotPresent
+  existingSecret: demo-postgres-credentials
+  service:
+    port: 5432
+  persistence:
+    storageClass: cinder-standard
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+route:
+  enabled: true
+  name: demo-3tier
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+quota:
+  enabled: true
+  name: demo-3tier-quota
+  hard:
+    pods: "15"
+    services: "8"
+    secrets: "20"
+    configmaps: "20"
+    persistentvolumeclaims: "4"
+    requests.cpu: "1500m"
+    requests.memory: 2Gi
+    limits.cpu: "3"
+    limits.memory: 3Gi
+    requests.storage: 10Gi
+    count/routes.route.openshift.io: "5"
+    count/imagestreams.image.openshift.io: "4"
+
+limitRange:
+  enabled: true
+  name: demo-3tier-defaults
+  container:
+    defaultRequest:
+      cpu: 10m
+      memory: 32Mi
+    default:
+      cpu: 250m
+      memory: 256Mi
+    min:
+      cpu: 5m
+      memory: 16Mi
+    max:
+      cpu: "1"
+      memory: 1Gi

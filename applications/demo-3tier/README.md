@@ -64,3 +64,39 @@ The normal browser URL is:
 ```text
 https://demo.apps.okd.lab.talelkarimchebbi.com
 ```
+
+## Helm deployment
+
+The runtime deployment is now packaged as a local Helm chart:
+
+```text
+applications/demo-3tier/helm/demo-3tier
+```
+
+Jenkins still builds and pushes frontend/backend images into the OpenShift integrated registry, then resolves immutable image digests. The final deploy is performed by Helm:
+
+```bash
+helm upgrade --install demo-3tier applications/demo-3tier/helm/demo-3tier \
+  --namespace demo \
+  --wait \
+  --atomic \
+  --timeout 10m \
+  --set-string frontend.image.ref="$FRONTEND_IMAGE" \
+  --set-string backend.image.ref="$BACKEND_IMAGE" \
+  --set-string route.host="$DEMO_PUBLIC_HOST"
+```
+
+For the first migration from the old `oc apply` resources to Helm:
+
+```bash
+make migrate-demo-3tier-to-helm
+```
+
+The Helm chart also manages the `demo` namespace guardrails:
+
+```text
+ResourceQuota/demo-3tier-quota
+LimitRange/demo-3tier-defaults
+```
+
+Detailed runbook: `docs/runbooks/demo-3tier-helm.md`.

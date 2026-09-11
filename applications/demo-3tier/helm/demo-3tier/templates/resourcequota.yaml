@@ -1,0 +1,12 @@
+{{- if .Values.quota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ .Values.quota.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "demo3tier.commonLabels" . | nindent 4 }}
+spec:
+  hard:
+    {{- toYaml .Values.quota.hard | nindent 4 }}
+{{- end }}

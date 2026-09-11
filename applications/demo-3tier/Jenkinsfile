@@ -60,6 +60,9 @@ pipeline {
                         test "$(oc auth can-i create statefulsets.apps -n "${OPENSHIFT_NAMESPACE}")" = "yes"
                         test "$(oc auth can-i create persistentvolumeclaims -n "${OPENSHIFT_NAMESPACE}")" = "yes"
                         test "$(oc auth can-i create routes.route.openshift.io -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i create resourcequotas -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i create limitranges -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        helm version --short
                         if oc auth can-i get nodes >/dev/null 2>&1; then
                           echo 'Jenkins unexpectedly has cluster-wide node read access.' >&2
                           exit 1
@@ -164,40 +167,50 @@ pipeline {
             }
         }
 
-        stage('Deploy PostgreSQL') {
+        stage('Deploy application with Helm') {
             steps {
                 sh '''#!/usr/bin/env bash
                     set -euo pipefail
                     export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
-                    oc get secret demo-postgres-credentials -n "${OPENSHIFT_NAMESPACE}" >/dev/null
-                    oc apply -f applications/demo-3tier/openshift/configmap.yaml
-                    oc apply -f applications/demo-3tier/openshift/postgres.yaml
-                    oc rollout status statefulset/demo-postgres \
-                      -n "${OPENSHIFT_NAMESPACE}" --timeout=8m
-                    oc get pvc -n "${OPENSHIFT_NAMESPACE}" -l app=demo-postgres
-                '''
-            }
-        }
-
-        stage('Deploy backend and frontend') {
-            steps {
-                sh '''#!/usr/bin/env bash
-                    set -euo pipefail
-                    export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                    chart_dir="applications/demo-3tier/helm/demo-3tier"
+                    release="demo-3tier"
                     frontend_image=$(cat "${WORKSPACE}/.frontend-image-ref")
                     backend_image=$(cat "${WORKSPACE}/.backend-image-ref")
 
-                    sed "s|__BACKEND_IMAGE__|${backend_image}|g" \
-                      applications/demo-3tier/openshift/backend.yaml | oc apply -f -
-                    oc rollout status deployment/demo-backend \
-                      -n "${OPENSHIFT_NAMESPACE}" --timeout=8m
+                    oc get secret demo-postgres-credentials -n "${OPENSHIFT_NAMESPACE}" >/dev/null
+                    helm lint "${chart_dir}" \
+                      --set-string frontend.image.ref="${frontend_image}" \
+                      --set-string backend.image.ref="${backend_image}" \
+                      --set-string route.host="${DEMO_PUBLIC_HOST}"
 
-                    sed "s|__FRONTEND_IMAGE__|${frontend_image}|g" \
-                      applications/demo-3tier/openshift/frontend.yaml | oc apply -f -
-                    sed "s|__DEMO_PUBLIC_HOST__|${DEMO_PUBLIC_HOST}|g" \
-                      applications/demo-3tier/openshift/route.yaml | oc apply -f -
-                    oc rollout status deployment/demo-frontend \
-                      -n "${OPENSHIFT_NAMESPACE}" --timeout=5m
+                    if ! helm status "${release}" -n "${OPENSHIFT_NAMESPACE}" >/dev/null 2>&1; then
+                      echo "First Helm deployment: clean takeover of legacy oc-apply runtime resources."
+                      # Keep generated DB Secret, ImageStreams and the PostgreSQL PVC.
+                      # Only remove the resources that Helm is going to own from now on.
+                      oc delete deployment demo-frontend demo-backend -n "${OPENSHIFT_NAMESPACE}" --ignore-not-found --wait=true
+                      oc delete statefulset  demo-postgres -n "${OPENSHIFT_NAMESPACE}" --ignore-not-found --wait=true
+                      oc delete pod -l app=demo-postgres -n "${OPENSHIFT_NAMESPACE}" --ignore-not-found --wait=true --timeout=5m
+                      oc delete service demo-frontend demo-backend demo-postgres -n "${OPENSHIFT_NAMESPACE}" --ignore-not-found
+                      oc delete configmap demo-backend-config -n "${OPENSHIFT_NAMESPACE}" --ignore-not-found
+                      oc delete route demo-3tier -n "${OPENSHIFT_NAMESPACE}" --ignore-not-found
+                    fi
+
+                    helm upgrade --install "${release}" "${chart_dir}" \
+                      --namespace "${OPENSHIFT_NAMESPACE}" \
+                      --wait \
+                      --atomic \
+                      --timeout 10m \
+                      --history-max 10 \
+                      --set-string frontend.image.ref="${frontend_image}" \
+                      --set-string backend.image.ref="${backend_image}" \
+                      --set-string route.host="${DEMO_PUBLIC_HOST}"
+
+                    helm status "${release}" -n "${OPENSHIFT_NAMESPACE}"
+                    oc rollout status statefulset/demo-postgres -n "${OPENSHIFT_NAMESPACE}" --timeout=8m
+                    oc rollout status deployment/demo-backend -n "${OPENSHIFT_NAMESPACE}" --timeout=8m
+                    oc rollout status deployment/demo-frontend -n "${OPENSHIFT_NAMESPACE}" --timeout=5m
+                    oc get resourcequota demo-3tier-quota -n "${OPENSHIFT_NAMESPACE}"
+                    oc get limitrange demo-3tier-defaults -n "${OPENSHIFT_NAMESPACE}"
                 '''
             }
         }
@@ -208,8 +221,11 @@ pipeline {
                     set -euo pipefail
                     export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
 
+                    helm status demo-3tier -n "${OPENSHIFT_NAMESPACE}" >/dev/null
                     test "$(oc get route demo-3tier -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.spec.host}')" = "${DEMO_PUBLIC_HOST}"
                     test "$(oc get pvc postgres-data-demo-postgres-0 -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.status.phase}')" = "Bound"
+                    oc get resourcequota demo-3tier-quota -n "${OPENSHIFT_NAMESPACE}" >/dev/null
+                    oc get limitrange demo-3tier-defaults -n "${OPENSHIFT_NAMESPACE}" >/dev/null
 
                     # Create a short-lived test Pod instead of granting Jenkins
                     # pods/exec. It calls the FRONTEND Service, so the request crosses

@@ -1,0 +1,20 @@
+{{- if .Values.limitRange.enabled }}
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ .Values.limitRange.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "demo3tier.commonLabels" . | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        {{- toYaml .Values.limitRange.container.defaultRequest | nindent 8 }}
+      default:
+        {{- toYaml .Values.limitRange.container.default | nindent 8 }}
+      min:
+        {{- toYaml .Values.limitRange.container.min | nindent 8 }}
+      max:
+        {{- toYaml .Values.limitRange.container.max | nindent 8 }}
+{{- end }}

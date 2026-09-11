@@ -9,7 +9,7 @@ OKD_LB_SERVER_NAME=${OKD_LB_SERVER_NAME:-okd-lb}
 OKD_LB_FLOATING_IP=${OKD_LB_FLOATING_IP:-}
 INGRESS_CA="$ROOT_DIR/.runtime/openshift/cicd/ingress-ca.crt"
 
-for binary in oc curl python3 "$ANSIBLE_PYTHON"; do
+for binary in oc helm curl python3 "$ANSIBLE_PYTHON"; do
   if [[ "$binary" == */* ]]; then
     [[ -x "$binary" ]] || { echo "Missing executable: $binary" >&2; exit 1; }
   else
@@ -57,7 +57,10 @@ printf '    PVC            %s\n' "$PVC"
 printf '    PV             %s\n' "$PV"
 printf '    Cinder volume  %s\n' "$CINDER_VOLUME"
 
-printf '[3/6] Validating Services, Route and immutable image references...\n'
+printf '[3/6] Validating Helm release, namespace policies, Services, Route and immutable image references...\n'
+helm status demo-3tier -n demo >/dev/null
+oc get resourcequota demo-3tier-quota -n demo >/dev/null
+oc get limitrange demo-3tier-defaults -n demo >/dev/null
 for service in demo-postgres demo-backend demo-frontend; do oc get service "$service" -n demo >/dev/null; done
 [[ "$(oc get route demo-3tier -n demo -o jsonpath='{.spec.host}')" == "$DEMO_HOST" ]] || {
   echo "Unexpected demo Route hostname." >&2
@@ -84,6 +87,7 @@ printf '[6/6] Final resource inventory...\n'
 oc get deployment,statefulset,service,route -n demo -l app.kubernetes.io/part-of=demo-3tier
 oc get pods -n demo -l app.kubernetes.io/part-of=demo-3tier -o wide
 oc get pvc -n demo -l app.kubernetes.io/part-of=demo-3tier
+oc get resourcequota,limitrange -n demo
 oc get imagestream demo-frontend demo-backend -n demo
 
 printf '\nDEMO-3TIER END-TO-END VALIDATION: SUCCESS\n'

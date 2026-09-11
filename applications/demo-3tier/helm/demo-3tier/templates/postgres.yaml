@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "demo3tier.postgresLabels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    app: demo-postgres
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.service.port }}
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: demo-postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "demo3tier.postgresLabels" . | nindent 4 }}
+spec:
+  serviceName: demo-postgres
+  replicas: {{ .Values.postgres.replicaCount }}
+  selector:
+    matchLabels:
+      app: demo-postgres
+  template:
+    metadata:
+      labels:
+        {{- include "demo3tier.postgresLabels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image.ref | quote }}
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ required "postgres.existingSecret is required" .Values.postgres.existingSecret | quote }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["/bin/bash", "-ec", "pg_isready -h 127.0.0.1 -p 5432 -U \"${POSTGRESQL_USER}\" -d \"${POSTGRESQL_DATABASE}\""]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["/bin/bash", "-ec", "pg_isready -h 127.0.0.1 -p 5432 -U \"${POSTGRESQL_USER}\" -d \"${POSTGRESQL_DATABASE}\""]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/pgsql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          {{- include "demo3tier.postgresLabels" . | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.postgres.persistence.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.persistence.size | quote }}

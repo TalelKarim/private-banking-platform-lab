@@ -14,6 +14,8 @@
       - jenkins_openshift_ingress_ca_src | length > 0
       - jenkins_openshift_oc_binary_src is string
       - jenkins_openshift_oc_binary_src | length > 0
+      - jenkins_openshift_helm_binary_src is string
+      - jenkins_openshift_helm_binary_src | length > 0
       - jenkins_agent_user is defined
       - jenkins_agent_user is string
       - jenkins_agent_user | length > 0
@@ -50,6 +52,14 @@
   ansible.builtin.copy:
     src: "{{ jenkins_openshift_oc_binary_src }}"
     dest: /usr/local/bin/oc
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the pinned Helm client from ops-runner
+  ansible.builtin.copy:
+    src: "{{ jenkins_openshift_helm_binary_src }}"
+    dest: /usr/local/bin/helm
     owner: root
     group: root
     mode: "0755"
@@ -232,6 +242,14 @@
       - /usr/local/bin/oc
       - version
       - --client
+  changed_when: false
+
+- name: Verify Helm client on Jenkins worker
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/helm
+      - version
+      - --short
   changed_when: false
 
 - name: Verify Podman rootless execution as Jenkins

@@ -20,7 +20,7 @@ API_CA_FILE="$RUNTIME_DIR/api-ca.crt"
 INGRESS_CA_FILE="$RUNTIME_DIR/ingress-ca.crt"
 REGISTRY_ROUTE_TIMEOUT=${REGISTRY_ROUTE_TIMEOUT:-5m}
 
-for binary in oc jq base64 curl openssl "$ANSIBLE_PYTHON" "$ANSIBLE_PLAYBOOK"; do
+for binary in oc helm jq base64 curl openssl "$ANSIBLE_PYTHON" "$ANSIBLE_PLAYBOOK"; do
   if [[ "$binary" == */* ]]; then
     [[ -x "$binary" ]] || { echo "Missing executable: $binary" >&2; exit 1; }
   else
@@ -165,12 +165,20 @@ JENKINS_IDENTITY='system:serviceaccount:cicd:jenkins'
   echo "Jenkins cannot create Routes in demo." >&2
   exit 1
 }
+[[ "$(oc auth can-i --as="$JENKINS_IDENTITY" create resourcequotas -n demo)" == "yes" ]] || {
+  echo "Jenkins cannot create ResourceQuotas in demo." >&2
+  exit 1
+}
+[[ "$(oc auth can-i --as="$JENKINS_IDENTITY" create limitranges -n demo)" == "yes" ]] || {
+  echo "Jenkins cannot create LimitRanges in demo." >&2
+  exit 1
+}
 if [[ "$(oc auth can-i --as="$JENKINS_IDENTITY" get nodes)" == "yes" ]]; then
   echo "Jenkins unexpectedly has cluster-wide node access." >&2
   exit 1
 fi
 
-printf '[6/8] Configuring private API/registry connectivity and rootless build tools on Jenkins worker...\n'
+printf '[6/8] Configuring private API/registry connectivity, Helm and rootless build tools on Jenkins worker...\n'
 export ANSIBLE_CONFIG="$ANSIBLE_DIR/ansible.cfg"
 EXTRA_VARS=(
   "jenkins_controller_ansible_host=$JENKINS_CONTROLLER_FLOATING_IP"
@@ -182,6 +190,7 @@ EXTRA_VARS=(
   "jenkins_openshift_api_ca_src=$API_CA_FILE"
   "jenkins_openshift_ingress_ca_src=$INGRESS_CA_FILE"
   "jenkins_openshift_oc_binary_src=/usr/local/bin/oc"
+  "jenkins_openshift_helm_binary_src=/usr/local/bin/helm"
   "jenkins_openshift_token_file=$TOKEN_FILE"
 )
 EXTRA_ARGS=()

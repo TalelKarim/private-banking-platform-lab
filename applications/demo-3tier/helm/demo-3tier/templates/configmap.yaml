@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-backend-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "demo3tier.commonLabels" . | nindent 4 }}
+data:
+  DB_HOST: {{ .Values.backend.config.dbHost | quote }}
+  DB_PORT: {{ .Values.backend.config.dbPort | quote }}
+  PORT: {{ .Values.backend.config.port | quote }}
