@@ -61,7 +61,9 @@ pipeline {
                         test "$(oc auth can-i create persistentvolumeclaims -n "${OPENSHIFT_NAMESPACE}")" = "yes"
                         test "$(oc auth can-i create routes.route.openshift.io -n "${OPENSHIFT_NAMESPACE}")" = "yes"
                         test "$(oc auth can-i create resourcequotas -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i patch resourcequotas -n "${OPENSHIFT_NAMESPACE}")" = "yes"
                         test "$(oc auth can-i create limitranges -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i patch limitranges -n "${OPENSHIFT_NAMESPACE}")" = "yes"
                         helm version --short
                         if oc auth can-i get nodes >/dev/null 2>&1; then
                           echo 'Jenkins unexpectedly has cluster-wide node read access.' >&2
@@ -183,6 +185,45 @@ pipeline {
                       --set-string backend.image.ref="${backend_image}" \
                       --set-string route.host="${DEMO_PUBLIC_HOST}"
 
+                    wait_for_quota_status() {
+                      local quota_name="demo-3tier-quota"
+                      local attempt hard_configmaps used_configmaps hard_services used_services
+
+                      for attempt in $(seq 1 60); do
+                        hard_configmaps=$(oc get resourcequota "${quota_name}" -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.status.hard.configmaps}' 2>/dev/null || true)
+                        used_configmaps=$(oc get resourcequota "${quota_name}" -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.status.used.configmaps}' 2>/dev/null || true)
+                        hard_services=$(oc get resourcequota "${quota_name}" -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.status.hard.services}' 2>/dev/null || true)
+                        used_services=$(oc get resourcequota "${quota_name}" -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.status.used.services}' 2>/dev/null || true)
+
+                        if [ -n "${hard_configmaps}" ] && [ -n "${used_configmaps}" ] && \
+                           [ -n "${hard_services}" ] && [ -n "${used_services}" ]; then
+                          echo "ResourceQuota ${quota_name} status is ready."
+                          return 0
+                        fi
+
+                        echo "Waiting for ResourceQuota ${quota_name} status to be calculated (${attempt}/60)..."
+                        sleep 2
+                      done
+
+                      oc describe resourcequota "${quota_name}" -n "${OPENSHIFT_NAMESPACE}" || true
+                      echo "ResourceQuota ${quota_name} status was not calculated in time." >&2
+                      return 1
+                    }
+
+                    apply_namespace_policies() {
+                      echo "Pre-applying ResourceQuota/LimitRange before app objects."
+                      helm template "${release}" "${chart_dir}" \
+                        --namespace "${OPENSHIFT_NAMESPACE}" \
+                        --show-only templates/resourcequota.yaml \
+                        --show-only templates/limitrange.yaml \
+                        --set-string frontend.image.ref="${frontend_image}" \
+                        --set-string backend.image.ref="${backend_image}" \
+                        --set-string route.host="${DEMO_PUBLIC_HOST}" | \
+                        oc apply -n "${OPENSHIFT_NAMESPACE}" -f -
+
+                      wait_for_quota_status
+                    }
+
                     if ! helm status "${release}" -n "${OPENSHIFT_NAMESPACE}" >/dev/null 2>&1; then
                       echo "First Helm deployment: clean takeover of legacy oc-apply runtime resources."
                       # Keep generated DB Secret, ImageStreams and the PostgreSQL PVC.
@@ -194,6 +235,8 @@ pipeline {
                       oc delete configmap demo-backend-config -n "${OPENSHIFT_NAMESPACE}" --ignore-not-found
                       oc delete route demo-3tier -n "${OPENSHIFT_NAMESPACE}" --ignore-not-found
                     fi
+
+                    apply_namespace_policies
 
                     helm upgrade --install "${release}" "${chart_dir}" \
                       --namespace "${OPENSHIFT_NAMESPACE}" \

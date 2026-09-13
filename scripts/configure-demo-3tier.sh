@@ -66,8 +66,16 @@ oc get rolebinding jenkins-deployer jenkins-image-builder private-banking-image-
   echo "Jenkins cannot create ResourceQuotas in $DEMO_NAMESPACE." >&2
   exit 1
 }
+[[ "$(oc auth can-i --as=system:serviceaccount:cicd:jenkins patch resourcequotas -n "$DEMO_NAMESPACE")" == "yes" ]] || {
+  echo "Jenkins cannot patch ResourceQuotas in $DEMO_NAMESPACE." >&2
+  exit 1
+}
 [[ "$(oc auth can-i --as=system:serviceaccount:cicd:jenkins create limitranges -n "$DEMO_NAMESPACE")" == "yes" ]] || {
   echo "Jenkins cannot create LimitRanges in $DEMO_NAMESPACE." >&2
+  exit 1
+}
+[[ "$(oc auth can-i --as=system:serviceaccount:cicd:jenkins patch limitranges -n "$DEMO_NAMESPACE")" == "yes" ]] || {
+  echo "Jenkins cannot patch LimitRanges in $DEMO_NAMESPACE." >&2
   exit 1
 }
 [[ -n "$REGISTRY_HOST" ]] || { echo "OpenShift registry Route is missing." >&2; exit 1; }

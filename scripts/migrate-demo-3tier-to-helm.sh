@@ -73,6 +73,44 @@ if [[ "$DRY_RUN" == "true" ]]; then
   exit 0
 fi
 
+wait_for_quota_status() {
+  local quota_name="demo-3tier-quota"
+  local attempt hard_configmaps used_configmaps hard_services used_services
+
+  for attempt in $(seq 1 60); do
+    hard_configmaps=$(oc get resourcequota "$quota_name" -n "$DEMO_NAMESPACE" -o jsonpath='{.status.hard.configmaps}' 2>/dev/null || true)
+    used_configmaps=$(oc get resourcequota "$quota_name" -n "$DEMO_NAMESPACE" -o jsonpath='{.status.used.configmaps}' 2>/dev/null || true)
+    hard_services=$(oc get resourcequota "$quota_name" -n "$DEMO_NAMESPACE" -o jsonpath='{.status.hard.services}' 2>/dev/null || true)
+    used_services=$(oc get resourcequota "$quota_name" -n "$DEMO_NAMESPACE" -o jsonpath='{.status.used.services}' 2>/dev/null || true)
+
+    if [[ -n "$hard_configmaps" && -n "$used_configmaps" && -n "$hard_services" && -n "$used_services" ]]; then
+      printf 'ResourceQuota %s status is ready.\n' "$quota_name"
+      return 0
+    fi
+
+    printf 'Waiting for ResourceQuota %s status to be calculated (%s/60)...\n' "$quota_name" "$attempt"
+    sleep 2
+  done
+
+  oc describe resourcequota "$quota_name" -n "$DEMO_NAMESPACE" || true
+  printf 'ResourceQuota %s status was not calculated in time.\n' "$quota_name" >&2
+  return 1
+}
+
+apply_namespace_policies() {
+  printf '\nPre-applying ResourceQuota/LimitRange before app objects.\n'
+  helm template "$HELM_RELEASE" "$HELM_CHART_DIR" \
+    --namespace "$DEMO_NAMESPACE" \
+    --show-only templates/resourcequota.yaml \
+    --show-only templates/limitrange.yaml \
+    --set-string frontend.image.ref="$FRONTEND_IMAGE_REF" \
+    --set-string backend.image.ref="$BACKEND_IMAGE_REF" \
+    --set-string route.host="$DEMO_PUBLIC_HOST" | \
+    oc apply -n "$DEMO_NAMESPACE" -f -
+
+  wait_for_quota_status
+}
+
 if ! helm status "$HELM_RELEASE" -n "$DEMO_NAMESPACE" >/dev/null 2>&1; then
   printf '\nFirst Helm release not found. Cleaning legacy oc-apply runtime resources.\n'
   printf 'Keeping generated PostgreSQL Secret, ImageStreams and existing PostgreSQL PVC.\n'
@@ -83,6 +121,8 @@ if ! helm status "$HELM_RELEASE" -n "$DEMO_NAMESPACE" >/dev/null 2>&1; then
   oc delete configmap demo-backend-config -n "$DEMO_NAMESPACE" --ignore-not-found
   oc delete route demo-3tier -n "$DEMO_NAMESPACE" --ignore-not-found
 fi
+
+apply_namespace_policies
 
 helm upgrade --install "$HELM_RELEASE" "$HELM_CHART_DIR" \
   --namespace "$DEMO_NAMESPACE" \
