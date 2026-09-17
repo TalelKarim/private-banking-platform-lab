@@ -43,3 +43,6 @@ passwords.yml
 local/
 # Runtime-only OpenShift installation assets (Ignition, kubeconfig, credentials)
 .runtime/
+
+
+target/
