@@ -54,14 +54,14 @@ resource "aws_instance" "lab" {
     nested_virtualization = "enabled"
   }
 
-  instance_market_options {
-    market_type = "spot"
+  # instance_market_options {
+  #   market_type = "spot"
 
-    spot_options {
-      spot_instance_type             = "persistent"
-      instance_interruption_behavior = "stop"
-    }
-  }
+  #   spot_options {
+  #     spot_instance_type             = "persistent"
+  #     instance_interruption_behavior = "stop"
+  #   }
+  # }
 
   metadata_options {
     http_endpoint               = "enabled"

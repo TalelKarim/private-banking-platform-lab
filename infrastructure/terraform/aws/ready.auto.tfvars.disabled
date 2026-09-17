@@ -1,0 +1,10 @@
+# Local runtime selector for the ready lab checkpoint. This file is ignored by Git.
+# lab-host AMI contains root + /data + Cinder EBS snapshots.
+golden_ami_id = "ami-010466df42142aa9e"
+
+# edge-gateway AMI contains the configured Nginx/root disk snapshot.
+edge_gateway_ami_id = "ami-0a90d8433dee8e9a9"
+
+# Keep the baked control-plane and edge addresses stable.
+openstack_host_private_ip = "172.31.31.70"
+edge_gateway_private_ip   = "172.31.31.71"

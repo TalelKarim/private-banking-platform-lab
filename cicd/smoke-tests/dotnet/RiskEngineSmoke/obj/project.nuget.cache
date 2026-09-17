@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "uzNUMN7ozHY=",
+  "success": true,
+  "projectFilePath": "/Users/tchebbi.ext/private-banking-platform-lab/cicd/smoke-tests/dotnet/RiskEngineSmoke/RiskEngineSmoke.csproj",
+  "expectedPackageFiles": [
+    "/Users/tchebbi.ext/.nuget/packages/microsoft.netcore.app.ref/8.0.31/microsoft.netcore.app.ref.8.0.31.nupkg.sha512",
+    "/Users/tchebbi.ext/.nuget/packages/microsoft.aspnetcore.app.ref/8.0.31/microsoft.aspnetcore.app.ref.8.0.31.nupkg.sha512",
+    "/Users/tchebbi.ext/.nuget/packages/microsoft.netcore.app.host.osx-arm64/8.0.31/microsoft.netcore.app.host.osx-arm64.8.0.31.nupkg.sha512"
+  ],
+  "logs": []
+}
