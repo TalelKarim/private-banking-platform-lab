@@ -1,0 +1,33 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/portfolio_db}
+    username: ${SPRING_DATASOURCE_USERNAME:portfolio_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:portfolio_pass}
+    driver-class-name: org.postgresql.Driver
+
+    hikari:
+      connection-timeout: 3000
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+    defer-datasource-initialization: true
+
+    properties:
+      hibernate:
+        format_sql: true
+
+  sql:
+    init:
+      mode: always
+
+management:
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.privatebanking.portfolio: DEBUG
+    org.hibernate.SQL: DEBUG

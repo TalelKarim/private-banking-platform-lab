@@ -1,10 +1,12 @@
 package com.privatebanking.portfolio.dto;
 
+import java.math.BigDecimal;
+
 public record PortfolioDto(
         Long id,
         String clientName,
         String portfolioName,
-        Double totalValue,
+        BigDecimal totalValue,
         String currency
 ) {
 }
