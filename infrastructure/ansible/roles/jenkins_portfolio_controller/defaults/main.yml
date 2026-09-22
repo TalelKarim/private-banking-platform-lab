@@ -1,0 +1,11 @@
+---
+jenkins_portfolio_admin_username: admin
+jenkins_portfolio_admin_password: null
+jenkins_portfolio_cli_jar: /var/cache/jenkins/jenkins-cli.jar
+jenkins_portfolio_runtime_dir: /run/jenkins-portfolio-registration
+jenkins_portfolio_job_name: portfolio-java-deploy
+jenkins_portfolio_job_description: "Build and deploy portfolio-java to OKD with Helm"
+jenkins_portfolio_pipeline_definition: null
+jenkins_portfolio_registry_host: null
+jenkins_portfolio_public_host: null
+jenkins_portfolio_repository_url: null

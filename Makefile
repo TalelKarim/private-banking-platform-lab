@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime recover-openstack-guests configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation configure-openshift-storage configure-openshift-registry configure-openshift-cicd test-openshift-cicd configure-demo-3tier helm-template-demo-3tier migrate-demo-3tier-to-helm deploy-demo-3tier test-demo-3tier cleanup-openshift-storage status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami bake-lab-ready-ami bake-edge-gateway-ami activate-golden-ami activate-ready-amis deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime recover-openstack-guests configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation configure-openshift-storage configure-openshift-registry configure-openshift-cicd test-openshift-cicd configure-demo-3tier helm-template-demo-3tier migrate-demo-3tier-to-helm deploy-demo-3tier test-demo-3tier configure-portfolio-java helm-template-portfolio-java deploy-portfolio-java test-portfolio-java cleanup-openshift-storage status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami bake-lab-ready-ami bake-edge-gateway-ami activate-golden-ami activate-ready-amis deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
@@ -37,6 +37,10 @@ help:
 	  'migrate-demo-3tier-to-helm One-time clean takeover of demo runtime resources by Helm' \
 	  'deploy-demo-3tier    Trigger Jenkins build/push/Helm deploy for the demo application' \
 	  'test-demo-3tier      Validate Route -> frontend -> backend -> PostgreSQL -> Cinder' \
+	  'configure-portfolio-java Sync DB Secret and register portfolio-java Jenkins deploy job' \
+	  'helm-template-portfolio-java Render the portfolio-java Helm chart without applying it' \
+	  'deploy-portfolio-java Trigger Jenkins build/push/Helm deploy for portfolio-java' \
+	  'test-portfolio-java Validate Route -> Spring Boot -> external PostgreSQL VM' \
 	  'cleanup-openshift-storage Reclaim registry/Cinder volumes before OKD VM destroy' \
 	  'status-okd-nodes      Show Nova status/fixed IPs for OKD runtime machines' \
 	  'destroy-okd-nodes     Destroy only bootstrap + compact control-plane VMs' \
@@ -163,6 +167,21 @@ deploy-demo-3tier:
 
 test-demo-3tier:
 	./scripts/test-demo-3tier.sh
+
+configure-portfolio-java:
+	./scripts/configure-portfolio-java.sh "$(JENKINS_FLOATING_IP)"
+
+helm-template-portfolio-java:
+	helm template portfolio-java applications/portfolio-java/helm/portfolio-java \
+	  --namespace banking \
+	  --set-string image.ref='registry.local/banking/portfolio-java@sha256:demo' \
+	  --set-string route.host='portfolio.apps.okd.lab.talelkarimchebbi.com'
+
+deploy-portfolio-java:
+	./scripts/deploy-portfolio-java.sh "$(JENKINS_FLOATING_IP)"
+
+test-portfolio-java:
+	./scripts/test-portfolio-java.sh
 
 cleanup-openshift-storage:
 	./scripts/cleanup-openshift-storage.sh

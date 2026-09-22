@@ -36,7 +36,7 @@ rules:
   # OpenShift protects user-selected Route hosts with a separate virtual
   # subresource. The normal `routes` create permission is not sufficient when
   # spec.host is explicitly set (demo.apps...). Grant this only through the
-  # existing RoleBinding in namespace demo, so Jenkins still has no cluster-wide
+  # namespaced RoleBindings (demo/banking), so Jenkins still has no cluster-wide
   # route administration.
   - apiGroups: ["route.openshift.io"]
     resources: ["routes/custom-host"]
@@ -93,6 +93,48 @@ metadata:
 subjects:
   - kind: Group
     name: system:serviceaccounts:demo
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:image-puller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-deployer
+  namespace: banking
+subjects:
+  - kind: ServiceAccount
+    name: jenkins
+    namespace: cicd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: private-banking-jenkins-deployer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-image-builder
+  namespace: banking
+subjects:
+  - kind: ServiceAccount
+    name: jenkins
+    namespace: cicd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:image-builder
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: private-banking-image-pullers
+  namespace: banking
+subjects:
+  - kind: Group
+    name: system:serviceaccounts:banking
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   apiGroup: rbac.authorization.k8s.io

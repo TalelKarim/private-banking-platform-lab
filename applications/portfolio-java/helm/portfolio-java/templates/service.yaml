@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "portfolio-java.name" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "portfolio-java.name" . }}
+    app.kubernetes.io/part-of: private-banking-platform-lab
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "portfolio-java.name" . }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      protocol: TCP

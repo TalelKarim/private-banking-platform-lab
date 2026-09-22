@@ -1,0 +1,227 @@
+pipeline {
+    agent { label 'lab-worker' }
+
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    environment {
+        OPENSHIFT_API = 'https://api.okd.lab.talelkarimchebbi.com:6443'
+        OPENSHIFT_NAMESPACE = 'banking'
+        OPENSHIFT_REGISTRY = 'OPENSHIFT_REGISTRY_PLACEHOLDER'
+        OPENSHIFT_API_CA = '/etc/jenkins-agent/openshift/api-ca.crt'
+        OPENSHIFT_INGRESS_CA = '/etc/jenkins-agent/openshift/ingress-ca.crt'
+        OPENSHIFT_INGRESS_IP = '10.20.0.10'
+        PORTFOLIO_PUBLIC_HOST = 'PORTFOLIO_PUBLIC_HOST_PLACEHOLDER'
+        PORTFOLIO_REPOSITORY_URL = 'PORTFOLIO_REPOSITORY_URL_PLACEHOLDER'
+        PORTFOLIO_GIT_BRANCH = 'main'
+        JENKINS_AGENT_HOME = '/var/lib/jenkins-agent'
+    }
+
+    stages {
+        stage('Checkout source') {
+            steps {
+                deleteDir()
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export HOME="${JENKINS_AGENT_HOME}"
+                    git -c http.version=HTTP/1.1 clone \
+                      --depth 1 \
+                      --branch "${PORTFOLIO_GIT_BRANCH}" \
+                      "${PORTFOLIO_REPOSITORY_URL}" .
+                '''
+                script {
+                    env.IMAGE_TAG = sh(
+                        script: 'git rev-parse --short=12 HEAD',
+                        returnStdout: true
+                    ).trim()
+                    echo "Immutable application source tag: ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('Maven verification') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export HOME="${JENKINS_AGENT_HOME}"
+                    mvn -B -f applications/portfolio-java/pom.xml test
+                '''
+            }
+        }
+
+        stage('Authenticate to OpenShift') {
+            steps {
+                withCredentials([string(credentialsId: 'openshift-ci-token', variable: 'OPENSHIFT_TOKEN')]) {
+                    sh '''#!/usr/bin/env bash
+                        set -euo pipefail
+                        export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                        rm -f "${KUBECONFIG}"
+                        oc login "${OPENSHIFT_API}" \
+                          --token="${OPENSHIFT_TOKEN}" \
+                          --certificate-authority="${OPENSHIFT_API_CA}" >/dev/null
+
+                        test "$(oc whoami)" = "system:serviceaccount:cicd:jenkins"
+                        test "$(oc auth can-i create deployments -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i create routes.route.openshift.io/custom-host -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        test "$(oc auth can-i create imagestreams.image.openshift.io -n "${OPENSHIFT_NAMESPACE}")" = "yes"
+                        helm version --short
+                    '''
+                }
+            }
+        }
+
+        stage('Build image') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export HOME="${JENKINS_AGENT_HOME}"
+                    podman build --format docker \
+                      -t "portfolio-java:${IMAGE_TAG}" \
+                      applications/portfolio-java
+                '''
+            }
+        }
+
+        stage('Push image to OpenShift registry') {
+            steps {
+                withCredentials([string(credentialsId: 'openshift-ci-token', variable: 'OPENSHIFT_TOKEN')]) {
+                    sh '''#!/usr/bin/env bash
+                        set -euo pipefail
+                        export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                        export HOME="${JENKINS_AGENT_HOME}"
+                        REGISTRY_AUTH_FILE="${WORKSPACE}/.podman-auth.json"
+
+                        oc apply -n "${OPENSHIFT_NAMESPACE}" \
+                          -f applications/portfolio-java/openshift/imagestream.yaml
+
+                        printf '%s' "${OPENSHIFT_TOKEN}" | \
+                          podman login \
+                            --authfile "${REGISTRY_AUTH_FILE}" \
+                            --username serviceaccount \
+                            --password-stdin \
+                            "${OPENSHIFT_REGISTRY}"
+
+                        target="${OPENSHIFT_REGISTRY}/${OPENSHIFT_NAMESPACE}/portfolio-java:${IMAGE_TAG}"
+                        podman tag "portfolio-java:${IMAGE_TAG}" "${target}"
+
+                        for attempt in 1 2 3 4; do
+                          echo "Pushing ${target} (attempt ${attempt}/4)"
+                          if podman push --authfile "${REGISTRY_AUTH_FILE}" "${target}"; then
+                            exit 0
+                          fi
+                          [ "${attempt}" -eq 4 ] && exit 1
+                          sleep $((attempt * 10))
+                        done
+                    '''
+                }
+            }
+        }
+
+        stage('Resolve immutable image digest') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+
+                    digest_ref=''
+                    for attempt in $(seq 1 60); do
+                      digest_ref=$(oc get istag "portfolio-java:${IMAGE_TAG}" \
+                        -n "${OPENSHIFT_NAMESPACE}" \
+                        -o jsonpath='{.image.dockerImageReference}' 2>/dev/null || true)
+                      [ -n "${digest_ref}" ] && break
+                      sleep 2
+                    done
+                    test -n "${digest_ref}"
+                    printf '%s\n' "${digest_ref}" > "${WORKSPACE}/.portfolio-image-ref"
+                    echo "Portfolio image: ${digest_ref}"
+                '''
+            }
+        }
+
+        stage('Deploy with Helm') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+                    chart_dir="applications/portfolio-java/helm/portfolio-java"
+                    release="portfolio-java"
+                    image_ref=$(cat "${WORKSPACE}/.portfolio-image-ref")
+
+                    oc get secret portfolio-java-db -n "${OPENSHIFT_NAMESPACE}" >/dev/null
+
+                    helm lint "${chart_dir}" \
+                      --set-string image.ref="${image_ref}" \
+                      --set-string route.host="${PORTFOLIO_PUBLIC_HOST}"
+
+                    # Apply quota/limits first so OpenShift has calculated quota status
+                    # before Helm creates the application resources.
+                    helm template "${release}" "${chart_dir}" \
+                      --namespace "${OPENSHIFT_NAMESPACE}" \
+                      --show-only templates/resourcequota.yaml \
+                      --show-only templates/limitrange.yaml \
+                      --set-string image.ref="${image_ref}" \
+                      --set-string route.host="${PORTFOLIO_PUBLIC_HOST}" | \
+                      oc apply -n "${OPENSHIFT_NAMESPACE}" -f -
+
+                    for attempt in $(seq 1 60); do
+                      hard=$(oc get resourcequota banking-quota -n "${OPENSHIFT_NAMESPACE}" \
+                        -o jsonpath='{.status.hard.pods}' 2>/dev/null || true)
+                      used=$(oc get resourcequota banking-quota -n "${OPENSHIFT_NAMESPACE}" \
+                        -o jsonpath='{.status.used.pods}' 2>/dev/null || true)
+                      [ -n "${hard}" ] && [ -n "${used}" ] && break
+                      sleep 2
+                    done
+
+                    helm upgrade --install "${release}" "${chart_dir}" \
+                      --namespace "${OPENSHIFT_NAMESPACE}" \
+                      --wait \
+                      --atomic \
+                      --timeout 10m \
+                      --history-max 10 \
+                      --set-string image.ref="${image_ref}" \
+                      --set-string route.host="${PORTFOLIO_PUBLIC_HOST}"
+
+                    oc rollout status deployment/portfolio-java \
+                      -n "${OPENSHIFT_NAMESPACE}" --timeout=8m
+                '''
+            }
+        }
+
+        stage('Smoke test') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                    set -euo pipefail
+                    export KUBECONFIG="${WORKSPACE}/.openshift-kubeconfig"
+
+                    test "$(oc get route portfolio-java -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.spec.host}')" = "${PORTFOLIO_PUBLIC_HOST}"
+                    image=$(oc get deployment portfolio-java -n "${OPENSHIFT_NAMESPACE}" -o jsonpath='{.spec.template.spec.containers[0].image}')
+                    [[ "${image}" == *@sha256:* ]]
+
+                    curl --fail --silent --show-error \
+                      --cacert "${OPENSHIFT_INGRESS_CA}" \
+                      --resolve "${PORTFOLIO_PUBLIC_HOST}:443:${OPENSHIFT_INGRESS_IP}" \
+                      "https://${PORTFOLIO_PUBLIC_HOST}/actuator/health" | grep -q '"status":"UP"'
+
+                    curl --fail --silent --show-error \
+                      --cacert "${OPENSHIFT_INGRESS_CA}" \
+                      --resolve "${PORTFOLIO_PUBLIC_HOST}:443:${OPENSHIFT_INGRESS_IP}" \
+                      "https://${PORTFOLIO_PUBLIC_HOST}/portfolios" | \
+                      python3 -c 'import json,sys; p=json.load(sys.stdin); assert len(p) >= 3'
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            sh '''
+                rm -f \
+                  "${WORKSPACE}/.openshift-kubeconfig" \
+                  "${WORKSPACE}/.podman-auth.json" \
+                  "${WORKSPACE}/.portfolio-image-ref" || true
+            '''
+        }
+    }
+}

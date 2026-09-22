@@ -13,3 +13,11 @@ metadata:
   labels:
     app.kubernetes.io/part-of: private-banking-platform-lab
     private-banking-platform-lab/managed-by: platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: banking
+  labels:
+    app.kubernetes.io/part-of: private-banking-platform-lab
+    private-banking-platform-lab/managed-by: platform

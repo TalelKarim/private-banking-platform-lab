@@ -1,0 +1,83 @@
+fullnameOverride: portfolio-java
+
+replicaCount: 2
+
+image:
+  ref: ""
+  pullPolicy: IfNotPresent
+
+containerPort: 8080
+
+service:
+  port: 8080
+  targetPort: http
+
+route:
+  enabled: true
+  name: portfolio-java
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+config:
+  springProfile: prod
+  datasourceUrl: jdbc:postgresql://10.10.0.40:5432/portfolio?currentSchema=portfolio
+  serverPort: "8080"
+
+secret:
+  existingSecret: portfolio-java-db
+
+probes:
+  readiness:
+    path: /actuator/health/readiness
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 6
+  liveness:
+    path: /actuator/health/liveness
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 4
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+quota:
+  enabled: true
+  name: banking-quota
+  hard:
+    pods: "10"
+    services: "5"
+    secrets: "20"
+    configmaps: "20"
+    requests.cpu: "1500m"
+    requests.memory: 2Gi
+    limits.cpu: "3"
+    limits.memory: 3Gi
+    count/routes.route.openshift.io: "5"
+    count/imagestreams.image.openshift.io: "5"
+
+limitRange:
+  enabled: true
+  name: banking-defaults
+  container:
+    defaultRequest:
+      cpu: 50m
+      memory: 128Mi
+    default:
+      cpu: 500m
+      memory: 512Mi
+    min:
+      cpu: 10m
+      memory: 64Mi
+    max:
+      cpu: "1"
+      memory: 1Gi

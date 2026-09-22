@@ -7,6 +7,8 @@
       - postgresql_port | int <= 65535
       - postgresql_private_ip is string
       - postgresql_private_cidr is string
+      - postgresql_app_client_cidrs is iterable
+      - postgresql_app_client_cidrs | length >= 1
       - postgresql_data_mount_point is string
       - postgresql_data_mount_point | length > 1
       - postgresql_database_name is match('^[a-z][a-z0-9_]*$')

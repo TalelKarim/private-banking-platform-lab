@@ -10,6 +10,8 @@ host    all                all                     127.0.0.1/32            scram
 host    all                all                     ::1/128                 scram-sha-256
 
 # Application traffic is deliberately narrow: one database/user pair and only
-# from the private OpenStack network. Neutron SGs provide the outer network
-# boundary; pg_hba.conf is the database-side boundary.
-host    {{ postgresql_database_name }} {{ postgresql_app_user }} {{ postgresql_private_cidr }} scram-sha-256
+# from explicitly approved lab client CIDRs. Neutron SGs provide the outer
+# network boundary; pg_hba.conf is the database-side boundary.
+{% for cidr in postgresql_app_client_cidrs %}
+host    {{ postgresql_database_name }} {{ postgresql_app_user }} {{ cidr }} scram-sha-256
+{% endfor %}

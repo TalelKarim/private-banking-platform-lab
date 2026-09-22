@@ -173,6 +173,16 @@ JENKINS_IDENTITY='system:serviceaccount:cicd:jenkins'
   echo "Jenkins cannot create LimitRanges in demo." >&2
   exit 1
 }
+for namespace in banking; do
+  [[ "$(oc auth can-i --as="$JENKINS_IDENTITY" create deployments -n "$namespace")" == "yes" ]] || {
+    echo "Jenkins cannot create Deployments in $namespace." >&2
+    exit 1
+  }
+  [[ "$(oc auth can-i --as="$JENKINS_IDENTITY" create routes.route.openshift.io/custom-host -n "$namespace")" == "yes" ]] || {
+    echo "Jenkins cannot create custom-host Routes in $namespace." >&2
+    exit 1
+  }
+done
 if [[ "$(oc auth can-i --as="$JENKINS_IDENTITY" get nodes)" == "yes" ]]; then
   echo "Jenkins unexpectedly has cluster-wide node access." >&2
   exit 1
@@ -215,6 +225,6 @@ printf '  %-28s %s\n' 'API private path' "$API_HOST -> $OKD_LB_PRIVATE_IP:6443"
 printf '  %-28s %s\n' 'Registry private path' "$REGISTRY_HOST -> $OKD_LB_PRIVATE_IP:443"
 printf '  %-28s %s\n' 'Public registry edge' 'BLOCKED / HTTP 404'
 printf '  %-28s %s\n' 'Jenkins identity' "$JENKINS_IDENTITY"
-printf '  %-28s %s\n' 'Deployment namespace' 'demo'
+printf '  %-28s %s\n' 'Deployment namespaces' 'demo, banking'
 printf '  %-28s %s\n' 'Jenkins credential' 'openshift-ci-token (runtime-injected)'
 printf '  %-28s %s\n' 'Jenkins smoke job' 'platform-openshift-smoke'

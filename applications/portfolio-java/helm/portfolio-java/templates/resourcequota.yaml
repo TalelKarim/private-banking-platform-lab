@@ -1,0 +1,11 @@
+{{- if .Values.quota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ .Values.quota.name }}
+  labels:
+    app.kubernetes.io/part-of: private-banking-platform-lab
+spec:
+  hard:
+{{ toYaml .Values.quota.hard | indent 4 }}
+{{- end }}

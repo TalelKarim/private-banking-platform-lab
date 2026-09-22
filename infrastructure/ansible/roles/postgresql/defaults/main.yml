@@ -5,6 +5,9 @@ postgresql_service_name: postgresql
 postgresql_port: 5432
 postgresql_private_ip: 10.10.0.40
 postgresql_private_cidr: 10.10.0.0/24
+postgresql_app_client_cidrs:
+  - 10.10.0.0/24
+  - 10.20.0.0/24
 
 postgresql_data_mount_point: /var/lib/postgresql
 postgresql_data_directory: "/var/lib/postgresql/{{ postgresql_major_version }}/{{ postgresql_cluster_name }}"

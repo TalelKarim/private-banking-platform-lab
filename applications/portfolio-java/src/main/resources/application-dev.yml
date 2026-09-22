@@ -22,6 +22,9 @@ spring:
     init:
       mode: always
 
+  flyway:
+    enabled: false
+
 management:
   endpoint:
     health:

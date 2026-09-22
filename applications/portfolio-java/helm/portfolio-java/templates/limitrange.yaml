@@ -1,0 +1,19 @@
+{{- if .Values.limitRange.enabled }}
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ .Values.limitRange.name }}
+  labels:
+    app.kubernetes.io/part-of: private-banking-platform-lab
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+{{ toYaml .Values.limitRange.container.defaultRequest | indent 8 }}
+      default:
+{{ toYaml .Values.limitRange.container.default | indent 8 }}
+      min:
+{{ toYaml .Values.limitRange.container.min | indent 8 }}
+      max:
+{{ toYaml .Values.limitRange.container.max | indent 8 }}
+{{- end }}

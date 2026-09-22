@@ -153,16 +153,17 @@ oc get pvc image-registry-storage -n openshift-image-registry
 oc get clusteroperator image-registry
 oc get serviceaccount jenkins -n cicd
 oc get rolebinding jenkins-deployer jenkins-image-builder private-banking-image-pullers -n demo
+oc get rolebinding jenkins-deployer jenkins-image-builder private-banking-image-pullers -n banking
 oc rollout status deployment/phase2-smoke -n demo --timeout=2m
 
-printf '[22/24] Configuring the demo-3tier runtime Secret and managed Jenkins deployment job...\n'
-"$ROOT_DIR/scripts/configure-demo-3tier.sh" "$JENKINS_FLOATING_IP"
+printf '[22/24] Configuring portfolio-java Secret, Helm inputs and managed Jenkins job...\n'
+"$ROOT_DIR/scripts/configure-portfolio-java.sh" "$JENKINS_FLOATING_IP"
 
-printf '[23/24] Building and deploying demo-3tier through Jenkins...\n'
-"$ROOT_DIR/scripts/deploy-demo-3tier.sh" "$JENKINS_FLOATING_IP"
+printf '[23/24] Building and deploying portfolio-java through Jenkins + Helm...\n'
+"$ROOT_DIR/scripts/deploy-portfolio-java.sh" "$JENKINS_FLOATING_IP"
 
-printf '[24/24] Final demo-3tier Route/application/persistence validation...\n'
-"$ROOT_DIR/scripts/test-demo-3tier.sh"
+printf '[24/24] Final portfolio-java Route/application/PostgreSQL validation...\n'
+"$ROOT_DIR/scripts/test-portfolio-java.sh"
 
 printf '\n%s\n' '------------------------------------------------------------'
 printf '%-28s %s\n' 'Jenkins controller' 'READY'
@@ -178,11 +179,11 @@ printf '%-28s %s\n' 'Cinder CSI' 'READY'
 printf '%-28s %s\n' 'StorageClass' 'cinder-standard (default)'
 printf '%-28s %s\n' 'Image registry storage' 'PERSISTENT / CINDER'
 printf '%-28s %s\n' 'Registry Jenkins Route' 'PRIVATE / PUBLIC EDGE BLOCKED'
-printf '%-28s %s\n' 'Jenkins OpenShift RBAC' 'READY (cicd:jenkins -> demo)'
+printf '%-28s %s\n' 'Jenkins OpenShift RBAC' 'READY (cicd:jenkins -> demo, banking)'
 printf '%-28s %s\n' 'Jenkins registry smoke' 'SUCCESS'
-printf '%-28s %s\n' 'demo-3tier Jenkins deploy' 'SUCCESS'
-printf '%-28s %s\n' 'demo-3tier PostgreSQL' 'STATEFUL / CINDER'
-printf '%-28s %s\n' 'demo-3tier public URL' "https://demo.apps.$OKD_CLUSTER_NAME.$LAB_BASE_DOMAIN"
+printf '%-28s %s\n' 'portfolio-java Jenkins deploy' 'SUCCESS'
+printf '%-28s %s\n' 'portfolio-java PostgreSQL' 'EXTERNAL VM / CINDER / SCRAM'
+printf '%-28s %s\n' 'portfolio-java public URL' "https://portfolio.apps.$OKD_CLUSTER_NAME.$LAB_BASE_DOMAIN"
 printf '%-28s %s\n' 'Controller FIP' "$JENKINS_FLOATING_IP"
 printf '%-28s %s\n' 'Worker FIP' "$JENKINS_WORKER_FLOATING_IP"
 printf '%-28s %s\n' 'PostgreSQL FIP' "$POSTGRESQL_FLOATING_IP"
