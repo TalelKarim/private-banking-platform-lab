@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "NgCtAKqwq+A=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\talel\\projects\\private-banking-platform-lab\\applications\\risk-engine-api\\RiskEngineApi.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\talel\\.nuget\\packages\\microsoft.aspnetcore.openapi\\10.0.12\\microsoft.aspnetcore.openapi.10.0.12.nupkg.sha512",
+    "C:\\Users\\talel\\.nuget\\packages\\microsoft.openapi\\2.12.0\\microsoft.openapi.2.12.0.nupkg.sha512"
+  ],
+  "logs": []
+}
