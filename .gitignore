@@ -48,3 +48,10 @@ local/
 target/
 
 .env
+
+# .NET build outputs and local IDE files
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
