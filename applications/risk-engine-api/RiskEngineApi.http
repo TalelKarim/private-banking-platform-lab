@@ -1,6 +1,27 @@
 @RiskEngineApi_HostAddress = http://localhost:5169
+@PortfolioId = 1
 
-GET {{RiskEngineApi_HostAddress}}/weatherforecast/
+### Service info
+GET {{RiskEngineApi_HostAddress}}/
 Accept: application/json
 
-###
+### Liveness - risk-engine-api process only
+GET {{RiskEngineApi_HostAddress}}/health/live
+
+### Readiness - verifies portfolio-java too
+GET {{RiskEngineApi_HostAddress}}/health/ready
+
+### Calculate risk
+POST {{RiskEngineApi_HostAddress}}/risk/calculate
+Content-Type: application/json
+
+{
+  "portfolioId": {{PortfolioId}},
+  "marketVolatility": 0.35,
+  "concentrationRatio": 0.40,
+  "leverageRatio": 0.10
+}
+
+### Get latest calculation
+GET {{RiskEngineApi_HostAddress}}/risk/{{PortfolioId}}
+Accept: application/json
