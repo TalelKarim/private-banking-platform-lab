@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime recover-openstack-guests configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation configure-openshift-storage configure-openshift-registry configure-openshift-cicd test-openshift-cicd configure-demo-3tier helm-template-demo-3tier migrate-demo-3tier-to-helm deploy-demo-3tier test-demo-3tier configure-portfolio-java helm-template-portfolio-java deploy-portfolio-java test-portfolio-java cleanup-openshift-storage status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami bake-lab-ready-ami bake-edge-gateway-ami activate-golden-ami activate-ready-amis deactivate-golden-ami
+.PHONY: help bootstrap-ansible configure-lab configure-openstack-runtime recover-openstack-guests configure-okd-client-access configure-jenkins configure-jenkins-worker test-jenkins-worker configure-postgresql backup-postgresql list-postgresql-backups test-postgresql-restore restore-postgresql configure-edge-gateway configure-okd-lb prepare-okd-toolchain prepare-okd-image prepare-okd-installation-prereqs generate-okd-install-assets publish-okd-ignition prepare-okd-install-assets create-okd-nodes complete-okd-installation configure-openshift-storage configure-openshift-registry configure-openshift-cicd test-openshift-cicd configure-demo-3tier helm-template-demo-3tier migrate-demo-3tier-to-helm deploy-demo-3tier test-demo-3tier configure-portfolio-java helm-template-portfolio-java deploy-portfolio-java test-portfolio-java configure-risk-engine-api helm-template-risk-engine-api deploy-risk-engine-api test-risk-engine-api cleanup-openshift-storage status-okd-nodes destroy-okd-nodes okd-node-console ssh-okd-node prepare-openstack prechecks-openstack deploy-openstack openstack-up openstack-status validate-openstack reconfigure-openstack stop-openstack prepare-golden-ami bake-golden-ami bake-lab-ready-ami bake-edge-gateway-ami activate-golden-ami activate-ready-amis deactivate-golden-ami
 
 help:
 	@printf '%s\n' \
@@ -41,6 +41,10 @@ help:
 	  'helm-template-portfolio-java Render the portfolio-java Helm chart without applying it' \
 	  'deploy-portfolio-java Trigger Jenkins build/push/Helm deploy for portfolio-java' \
 	  'test-portfolio-java Validate Route -> Spring Boot -> external PostgreSQL VM' \
+	  'configure-risk-engine-api Register risk-engine-api Jenkins deploy job and validate Helm/DNS inputs' \
+	  'helm-template-risk-engine-api Render the risk-engine-api Helm chart without applying it' \
+	  'deploy-risk-engine-api Trigger Jenkins build/push/Helm deploy for risk-engine-api' \
+	  'test-risk-engine-api Validate Route -> .NET -> portfolio-java Service -> PostgreSQL VM' \
 	  'cleanup-openshift-storage Reclaim registry/Cinder volumes before OKD VM destroy' \
 	  'status-okd-nodes      Show Nova status/fixed IPs for OKD runtime machines' \
 	  'destroy-okd-nodes     Destroy only bootstrap + compact control-plane VMs' \
@@ -182,6 +186,21 @@ deploy-portfolio-java:
 
 test-portfolio-java:
 	./scripts/test-portfolio-java.sh
+
+configure-risk-engine-api:
+	./scripts/configure-risk-engine-api.sh "$(JENKINS_FLOATING_IP)"
+
+helm-template-risk-engine-api:
+	helm template risk-engine-api applications/risk-engine-api/helm/risk-engine-api \
+	  --namespace banking \
+	  --set-string image.ref='registry.local/banking/risk-engine-api@sha256:demo' \
+	  --set-string route.host='risk.apps.okd.lab.talelkarimchebbi.com'
+
+deploy-risk-engine-api:
+	./scripts/deploy-risk-engine-api.sh "$(JENKINS_FLOATING_IP)"
+
+test-risk-engine-api:
+	./scripts/test-risk-engine-api.sh
 
 cleanup-openshift-storage:
 	./scripts/cleanup-openshift-storage.sh

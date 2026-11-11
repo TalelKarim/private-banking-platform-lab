@@ -1,0 +1,7 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: risk-engine-api
+  labels:
+    app.kubernetes.io/name: risk-engine-api
+    app.kubernetes.io/part-of: private-banking-platform-lab

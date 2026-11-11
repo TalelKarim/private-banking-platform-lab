@@ -1,0 +1,50 @@
+fullnameOverride: risk-engine-api
+
+# One replica while IRiskStore is process-local memory.
+replicaCount: 1
+
+image:
+  ref: ""
+  pullPolicy: IfNotPresent
+
+containerPort: 8080
+
+service:
+  port: 8080
+  targetPort: http
+
+route:
+  enabled: true
+  name: risk-engine-api
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+config:
+  environment: Production
+  httpPorts: "8080"
+  portfolioApiBaseUrl: http://portfolio-java:8080/
+  portfolioApiTimeoutSeconds: "3"
+
+probes:
+  readiness:
+    path: /health/ready
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  liveness:
+    path: /health/live
+    initialDelaySeconds: 20
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 4
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 384Mi

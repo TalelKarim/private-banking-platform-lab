@@ -1,0 +1,21 @@
+{{- if .Values.route.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.route.name }}
+  labels:
+    app.kubernetes.io/name: {{ include "risk-engine-api.name" . }}
+    app.kubernetes.io/part-of: private-banking-platform-lab
+spec:
+  host: {{ required "route.host must be set" .Values.route.host | quote }}
+  to:
+    kind: Service
+    name: {{ include "risk-engine-api.name" . }}
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: {{ .Values.route.tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .Values.route.tls.insecureEdgeTerminationPolicy }}
+  wildcardPolicy: None
+{{- end }}

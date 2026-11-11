@@ -1,0 +1,11 @@
+---
+jenkins_risk_admin_username: admin
+jenkins_risk_admin_password: null
+jenkins_risk_cli_jar: /var/cache/jenkins/jenkins-cli.jar
+jenkins_risk_runtime_dir: /run/jenkins-risk-registration
+jenkins_risk_job_name: risk-engine-api-deploy
+jenkins_risk_job_description: "Build and deploy risk-engine-api to OKD with Helm"
+jenkins_risk_pipeline_definition: null
+jenkins_risk_registry_host: null
+jenkins_risk_public_host: null
+jenkins_risk_repository_url: null

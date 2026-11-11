@@ -73,3 +73,44 @@ In OpenShift, override the Java service URL with:
 ```text
 PortfolioApi__BaseUrl=http://portfolio-java:8080/
 ```
+
+
+## Container and OpenShift deployment
+
+Local container stack:
+
+```powershell
+docker compose -f .\applications\compose.local.yml up --build -d
+```
+
+OpenShift runtime contract:
+
+```text
+Route risk.apps.<cluster>.<base-domain>
+  -> Service risk-engine-api:8080
+  -> Pod risk-engine-api
+  -> http://portfolio-java:8080/
+  -> Service portfolio-java
+  -> Java pods
+  -> PostgreSQL VM 10.10.0.40:5432
+```
+
+The Helm chart intentionally starts with one risk-engine-api replica because
+`InMemoryRiskStore` is process-local. Scale-out should be enabled only after
+the calculation store becomes shared/persistent.
+
+From the ops-runner, the deployment lifecycle is:
+
+```bash
+make configure-risk-engine-api
+make helm-template-risk-engine-api
+make deploy-risk-engine-api
+make test-risk-engine-api
+```
+
+A full lab convergence also configures, deploys and validates the Risk Engine
+after portfolio-java:
+
+```bash
+make configure-lab
+```
