@@ -1,0 +1,52 @@
+name: private-banking-local
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: portfolio_db
+      POSTGRES_USER: portfolio_user
+      POSTGRES_PASSWORD: portfolio_pass
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U portfolio_user -d portfolio_db
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - portfolio-postgres-data:/var/lib/postgresql/data
+
+  portfolio-java:
+    build:
+      context: ./portfolio-java
+    image: portfolio-java:local
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/portfolio_db
+      SPRING_DATASOURCE_USERNAME: portfolio_user
+      SPRING_DATASOURCE_PASSWORD: portfolio_pass
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  risk-engine-api:
+    build:
+      context: ./risk-engine-api
+    image: risk-engine-api:local
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_HTTP_PORTS: "8080"
+      PortfolioApi__BaseUrl: http://portfolio-java:8080/
+      PortfolioApi__TimeoutSeconds: "3"
+    ports:
+      - "5169:8080"
+    depends_on:
+      - portfolio-java
+
+volumes:
+  portfolio-postgres-data:
