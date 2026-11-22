@@ -27,10 +27,11 @@ IGNITION_FETCH_INTERVAL_SECONDS=${IGNITION_FETCH_INTERVAL_SECONDS:-5}
 
 usage() {
   cat <<'EOF_USAGE'
-Usage: scripts/okd-nodes.sh <apply|status|retire-bootstrap|destroy|console> [node]
+Usage: scripts/okd-nodes.sh <apply|status|recover-state|retire-bootstrap|destroy|console> [node]
 
   apply             Generate verified Ignition stubs and converge the runtime OKD machines
   status            Show bootstrap (if present) and the three control planes
+  recover-state     Import an existing compact cluster into runtime Terraform and retire bootstrap safely
   retire-bootstrap  Remove only the temporary bootstrap VM/port from runtime Terraform
   destroy           Destroy the complete runtime OKD Terraform layer
   console           Show recent Nova console output for bootstrap, okd-01, okd-02 or okd-03
@@ -38,7 +39,7 @@ EOF_USAGE
 }
 
 case "$ACTION" in
-  apply|status|retire-bootstrap|destroy|console) ;;
+  apply|status|recover-state|retire-bootstrap|destroy|console) ;;
   -h|--help|help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -207,6 +208,148 @@ export TF_DATA_DIR
 
 mkdir -p "$TF_RUNTIME_DIR"
 chmod 0700 "$TF_RUNTIME_DIR"
+
+if [[ "$ACTION" == recover-state ]]; then
+  if [[ ! -s "$TF_VARS" ]]; then
+    echo "Runtime Terraform variables are missing: $TF_VARS" >&2
+    echo "Run configure-lab/create-okd-nodes far enough to render runtime variables before state recovery." >&2
+    exit 1
+  fi
+
+  terraform -chdir="$TF_DIR" init -input=false >/dev/null
+
+  state_has() {
+    local address=$1
+    [[ -s "$TF_STATE" ]] && terraform -chdir="$TF_DIR" state show -state="$TF_STATE" "$address" >/dev/null 2>&1
+  }
+
+  import_if_missing() {
+    local address=$1
+    local object_id=$2
+    if state_has "$address"; then
+      printf '  %-70s already managed\n' "$address"
+      return 0
+    fi
+
+    printf '  importing %-60s %s\n' "$address" "$object_id"
+    terraform -chdir="$TF_DIR" import \
+      -input=false \
+      -state="$TF_STATE" \
+      -var-file="$TF_VARS" \
+      "$address" "$object_id"
+  }
+
+  printf '%s\n' 'Recovering existing compact OKD resources into runtime Terraform state...'
+
+  for name in "${CONTROL_PLANE_NAMES[@]}"; do
+    expected_ip=$(jq -r --arg name "$name" '.okd_control_planes[] | select(.name == $name) | .ip' <<<"$CONFIG_JSON")
+    server_id=$(remote_openstack server show "$name" -f value -c id)
+    server_status=$(remote_openstack server show "$name" -f value -c status)
+    port_name="${name}-port"
+    port_id=$(remote_openstack port show "$port_name" -f value -c id)
+    port_device_id=$(remote_openstack port show "$port_name" -f value -c device_id)
+    port_fixed_ips=$(remote_openstack port show "$port_name" -f value -c fixed_ips)
+
+    if [[ "$server_status" != ACTIVE ]]; then
+      echo "Refusing state recovery: $name is not ACTIVE (status=$server_status)." >&2
+      exit 1
+    fi
+    if [[ "$port_device_id" != "$server_id" ]]; then
+      echo "Refusing state recovery: $port_name is attached to $port_device_id, expected $server_id." >&2
+      exit 1
+    fi
+    if [[ "$port_fixed_ips" != *"$expected_ip"* ]]; then
+      echo "Refusing state recovery: $port_name does not own expected IP $expected_ip." >&2
+      exit 1
+    fi
+
+    import_if_missing "openstack_networking_port_v2.control_plane[\"$name\"]" "$port_id"
+    import_if_missing "openstack_compute_instance_v2.control_plane[\"$name\"]" "$server_id"
+  done
+
+  # A failed fresh-run apply may already have created bootstrap before hitting
+  # the existing control-plane IPs. Ensure Terraform owns that temporary pair
+  # too so bootstrap retirement remains declarative rather than an ad-hoc delete.
+  if remote_openstack server show "$BOOTSTRAP_NAME" >/dev/null 2>&1; then
+    bootstrap_server_id=$(remote_openstack server show "$BOOTSTRAP_NAME" -f value -c id)
+    bootstrap_port_id=$(remote_openstack port show "${BOOTSTRAP_NAME}-port" -f value -c id)
+    bootstrap_port_device_id=$(remote_openstack port show "${BOOTSTRAP_NAME}-port" -f value -c device_id)
+    if [[ "$bootstrap_port_device_id" != "$bootstrap_server_id" ]]; then
+      echo "Refusing state recovery: bootstrap port/server attachment is inconsistent." >&2
+      exit 1
+    fi
+    import_if_missing 'openstack_networking_port_v2.bootstrap[0]' "$bootstrap_port_id"
+    import_if_missing 'openstack_compute_instance_v2.bootstrap[0]' "$bootstrap_server_id"
+  fi
+
+  tmp_vars=$(mktemp "$TF_RUNTIME_DIR/runtime.auto.tfvars.json.XXXXXX")
+  jq '.bootstrap_enabled = false' "$TF_VARS" > "$tmp_vars"
+  chmod 0600 "$tmp_vars"
+  mv "$tmp_vars" "$TF_VARS"
+
+  PLAN_FILE="$TF_RUNTIME_DIR/recover-state.tfplan"
+  rm -f "$PLAN_FILE"
+
+  set +e
+  terraform -chdir="$TF_DIR" plan \
+    -input=false \
+    -detailed-exitcode \
+    -state="$TF_STATE" \
+    -var-file="$TF_VARS" \
+    -out="$PLAN_FILE"
+  plan_rc=$?
+  set -e
+
+  if [[ "$plan_rc" -eq 1 ]]; then
+    echo "Terraform recovery plan failed." >&2
+    exit 1
+  fi
+
+  PLAN_JSON=$(terraform -chdir="$TF_DIR" show -json "$PLAN_FILE")
+  UNSAFE_CHANGES=$(jq -r '
+    .resource_changes[]
+    | select(.change.actions != ["no-op"])
+    | select(
+        ((.address != "openstack_compute_instance_v2.bootstrap[0]")
+         and (.address != "openstack_networking_port_v2.bootstrap[0]"))
+        or (.change.actions != ["delete"])
+      )
+    | "\(.address) -> \(.change.actions | join(","))"
+  ' <<<"$PLAN_JSON")
+
+  if [[ -n "$UNSAFE_CHANGES" ]]; then
+    echo "Refusing automatic recovery apply: Terraform wants changes beyond bootstrap deletion:" >&2
+    printf '%s\n' "$UNSAFE_CHANGES" >&2
+    echo "The imported control planes were left intact; inspect the plan before proceeding." >&2
+    exit 1
+  fi
+
+  if [[ "$plan_rc" -eq 2 ]]; then
+    printf '\nRecovery plan is safe: only the temporary bootstrap pair will be removed.\n'
+    terraform -chdir="$TF_DIR" apply -input=false -auto-approve "$PLAN_FILE"
+  else
+    printf '\nRecovery plan has no infrastructure changes; bootstrap is already absent.\n'
+  fi
+  rm -f "$PLAN_FILE"
+
+  for name in "${CONTROL_PLANE_NAMES[@]}"; do
+    status=$(remote_openstack server show "$name" -f value -c status 2>/dev/null || true)
+    if [[ "$status" != ACTIVE ]]; then
+      echo "Recovered control plane $name is not ACTIVE after state convergence (status=${status:-missing})." >&2
+      exit 1
+    fi
+  done
+  if remote_openstack server show "$BOOTSTRAP_NAME" >/dev/null 2>&1; then
+    echo "Bootstrap still exists after recovery convergence." >&2
+    exit 1
+  fi
+
+  printf '\n%s\n' 'Runtime Terraform state RECOVERED.'
+  printf '%s\n' '  control planes: imported/preserved'
+  printf '%s\n' '  bootstrap:      retired'
+  show_status
+  exit 0
+fi
 
 if [[ "$ACTION" == retire-bootstrap ]]; then
   if [[ ! -s "$TF_STATE" || ! -s "$TF_VARS" ]]; then
