@@ -338,7 +338,17 @@ if [[ "$ACTION" == recover-state ]]; then
 
   if [[ "$plan_rc" -eq 2 ]]; then
     printf '\nRecovery plan is safe: control planes stay in place; only in-place normalization plus bootstrap retirement are allowed.\n'
-    terraform -chdir="$TF_DIR" apply -input=false -auto-approve "$PLAN_FILE"
+    # The safety plan above was rendered against an explicit external local
+    # state path (-state=...). Applying the saved plan directly would make
+    # Terraform compare it with the module default local-backend lineage and
+    # fail with "Saved plan does not match the given state". Re-run apply
+    # against the exact same runtime state/vars after the JSON guard approved
+    # the intended actions.
+    terraform -chdir="$TF_DIR" apply \
+      -input=false \
+      -auto-approve \
+      -state="$TF_STATE" \
+      -var-file="$TF_VARS"
   else
     printf '\nRecovery plan has no infrastructure changes; bootstrap is already absent.\n'
   fi
