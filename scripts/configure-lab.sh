@@ -121,14 +121,38 @@ printf '[12/27] Configuring ops-runner OKD API resolution and SSH jump aliases..
 printf '[13/27] Preparing pinned OKD installer tooling, Helm and matching SCOS Glance image...\n'
 "$ROOT_DIR/scripts/prepare-okd-installation-prereqs.sh"
 
-printf '[14/27] Generating and publishing fresh OKD installation assets...\n'
-"$ROOT_DIR/scripts/prepare-okd-install-assets.sh" "$OKD_LB_FLOATING_IP"
+RUNTIME_TFVARS="$ROOT_DIR/.runtime/openshift/terraform-nodes/runtime.auto.tfvars.json"
+OKD_STATUS=$("$ROOT_DIR/scripts/okd-nodes.sh" status)
+ACTIVE_CONTROL_PLANES=$(awk '$1 ~ /^okd-0[123]$/ && $2 == "ACTIVE" {count++} END {print count+0}' <<<"$OKD_STATUS")
+BOOTSTRAP_ENABLED=true
+if [[ -s "$RUNTIME_TFVARS" ]]; then
+  BOOTSTRAP_ENABLED=$(jq -r 'if has("bootstrap_enabled") then .bootstrap_enabled else true end' "$RUNTIME_TFVARS")
+fi
 
-printf '[15/27] Creating/converging OKD bootstrap + compact control-plane VMs...\n'
-"$ROOT_DIR/scripts/okd-nodes.sh" apply
+if [[ "$ACTIVE_CONTROL_PLANES" -eq 3 && "$BOOTSTRAP_ENABLED" == false ]]; then
+  printf '[14/27] Existing installed OKD cluster detected; recovering canonical admin access...\n'
+  "$ROOT_DIR/scripts/recover-existing-okd-cluster.sh"
 
-printf '[16/27] Completing OKD installation and retiring bootstrap...\n'
-"$ROOT_DIR/scripts/complete-okd-installation.sh" "$OKD_LB_FLOATING_IP"
+  printf '[15/27] Preserving existing compact control-plane VMs from recovered Terraform state...\n'
+  "$ROOT_DIR/scripts/okd-nodes.sh" status
+
+  printf '[16/27] Existing OKD installation validated; bootstrap already retired.\n'
+  oc --kubeconfig="$ROOT_DIR/.runtime/openshift/install/auth/kubeconfig" get nodes
+elif [[ "$ACTIVE_CONTROL_PLANES" -eq 3 && ! -s "$RUNTIME_TFVARS" ]]; then
+  echo "Existing OKD control planes were found but runtime Terraform variables are missing." >&2
+  echo "Refusing to generate a new cluster identity over live nodes." >&2
+  echo "Run: make recover-okd-runtime-state" >&2
+  exit 1
+else
+  printf '[14/27] Generating and publishing fresh OKD installation assets...\n'
+  "$ROOT_DIR/scripts/prepare-okd-install-assets.sh" "$OKD_LB_FLOATING_IP"
+
+  printf '[15/27] Creating/converging OKD bootstrap + compact control-plane VMs...\n'
+  "$ROOT_DIR/scripts/okd-nodes.sh" apply
+
+  printf '[16/27] Completing OKD installation and retiring bootstrap...\n'
+  "$ROOT_DIR/scripts/complete-okd-installation.sh" "$OKD_LB_FLOATING_IP"
+fi
 
 printf '[17/27] Installing/converging OpenStack Cinder CSI + default StorageClass...\n'
 "$ROOT_DIR/scripts/configure-openshift-storage.sh"
