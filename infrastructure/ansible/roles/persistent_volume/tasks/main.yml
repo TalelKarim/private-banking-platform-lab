@@ -71,7 +71,7 @@
       - "{{ persistent_volume_mount_point }}"
   register: persistent_volume_mountpoint_state
   changed_when: false
-  failed_when: persistent_volume_mountpoint_state.rc not in [0, 1]
+  failed_when: persistent_volume_mountpoint_state.rc not in [0, 32]
 
 - name: Check for pre-existing files that would be hidden by the mount
   ansible.builtin.shell: |
