@@ -13,6 +13,10 @@ crash.*.log
 *.auto.tfvars
 !*.tfvars.example
 
+# This project intentionally versions the selected Ready AMI checkpoint so a
+# fresh clone recreates the validated lab-host/edge-gateway images by default.
+!infrastructure/terraform/aws/ready.auto.tfvars
+
 # Terraform overrides
 override.tf
 override.tf.json
