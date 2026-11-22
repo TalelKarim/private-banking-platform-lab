@@ -317,7 +317,11 @@ if [[ "$ACTION" == recover-state ]]; then
         )
         or
         (
-          (.address | test("^openstack_networking_port_v2\\.control_plane\\["))
+          (
+            (.address | test("^openstack_networking_port_v2\\.control_plane\\["))
+            or
+            (.address | test("^openstack_compute_instance_v2\\.control_plane\\["))
+          )
           and .change.actions == ["update"]
         )
         | not
@@ -333,7 +337,7 @@ if [[ "$ACTION" == recover-state ]]; then
   fi
 
   if [[ "$plan_rc" -eq 2 ]]; then
-    printf '\nRecovery plan is safe: control-plane VMs stay untouched; only port normalization and bootstrap retirement are allowed.\n'
+    printf '\nRecovery plan is safe: control planes stay in place; only in-place normalization plus bootstrap retirement are allowed.\n'
     terraform -chdir="$TF_DIR" apply -input=false -auto-approve "$PLAN_FILE"
   else
     printf '\nRecovery plan has no infrastructure changes; bootstrap is already absent.\n'
