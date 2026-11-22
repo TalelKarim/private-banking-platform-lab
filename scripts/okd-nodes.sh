@@ -310,9 +310,17 @@ if [[ "$ACTION" == recover-state ]]; then
     .resource_changes[]
     | select(.change.actions != ["no-op"])
     | select(
-        ((.address != "openstack_compute_instance_v2.bootstrap[0]")
-         and (.address != "openstack_networking_port_v2.bootstrap[0]"))
-        or (.change.actions != ["delete"])
+        (
+          (.address == "openstack_compute_instance_v2.bootstrap[0]"
+           or .address == "openstack_networking_port_v2.bootstrap[0]")
+          and .change.actions == ["delete"]
+        )
+        or
+        (
+          (.address | test("^openstack_networking_port_v2\\.control_plane\\["))
+          and .change.actions == ["update"]
+        )
+        | not
       )
     | "\(.address) -> \(.change.actions | join(","))"
   ' <<<"$PLAN_JSON")
@@ -325,7 +333,7 @@ if [[ "$ACTION" == recover-state ]]; then
   fi
 
   if [[ "$plan_rc" -eq 2 ]]; then
-    printf '\nRecovery plan is safe: only the temporary bootstrap pair will be removed.\n'
+    printf '\nRecovery plan is safe: control-plane VMs stay untouched; only port normalization and bootstrap retirement are allowed.\n'
     terraform -chdir="$TF_DIR" apply -input=false -auto-approve "$PLAN_FILE"
   else
     printf '\nRecovery plan has no infrastructure changes; bootstrap is already absent.\n'

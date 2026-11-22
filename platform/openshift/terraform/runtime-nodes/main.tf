@@ -66,7 +66,11 @@ resource "openstack_compute_instance_v2" "bootstrap" {
   # ignored after creation. A deliberate rebuild still gets the current
   # user_data because a newly-created resource always uses the configured value.
   lifecycle {
-    ignore_changes = [user_data]
+    # First-boot/attachment inputs are intentionally immutable after creation.
+    # OpenStack import does not fully reconstruct config_drive/network.port and
+    # would otherwise propose replacing a healthy existing node. The Neutron
+    # port itself remains managed by its dedicated Terraform resource.
+    ignore_changes = [user_data, config_drive, network]
   }
 }
 
@@ -130,6 +134,10 @@ resource "openstack_compute_instance_v2" "control_plane" {
   # first boot. Never let a regenerated master.ign implicitly replace an
   # existing etcd/control-plane VM. Rebuilds must be explicit (destroy/create).
   lifecycle {
-    ignore_changes = [user_data]
+    # First-boot/attachment inputs are intentionally immutable after creation.
+    # OpenStack import does not fully reconstruct config_drive/network.port and
+    # would otherwise propose replacing a healthy existing node. The Neutron
+    # port itself remains managed by its dedicated Terraform resource.
+    ignore_changes = [user_data, config_drive, network]
   }
 }
