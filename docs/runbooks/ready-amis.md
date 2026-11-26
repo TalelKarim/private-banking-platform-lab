@@ -24,8 +24,8 @@ make validate-openstack
 Also validate the public ingress path:
 
 ```bash
-curl -kI https://jenkins.talelkarimchebbi.com
-curl -kI https://cloud.talelkarimchebbi.com
+curl -kI https://jenkins.lab.talelkarimchebbi.com
+curl -kI https://cloud.lab.talelkarimchebbi.com
 curl -kI https://demo.apps.okd.lab.talelkarimchebbi.com
 ```
 
@@ -99,12 +99,21 @@ terraform output -raw bootstrap_log_command
 terraform output -raw edge_gateway_bootstrap_log_command
 ```
 
-If OpenStack guests do not automatically resume, use the existing lightweight
-recovery path instead of full `configure-lab`:
+A Ready AMI restores the stateful `lab-host`, but the `ops-runner` is intentionally stateless. If its local OKD runtime Terraform state was lost while the restored OpenStack still contains `okd-01/02/03`, recover Terraform ownership before full convergence:
 
 ```bash
 make recover-openstack-guests
-make test-demo-3tier
+make recover-okd-runtime-state
+make configure-lab
+```
+
+`configure-lab` then detects the existing installed cluster, recovers a canonical administrative kubeconfig from a control plane and preserves the three existing OKD VMs.
+
+If the intent is instead to rebuild only OKD from a clean identity while keeping the rest of the lab:
+
+```bash
+CONFIRM=RESET-OKD make reset-okd-cluster
+make configure-lab
 ```
 
 ## Important constraints

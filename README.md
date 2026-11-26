@@ -204,7 +204,7 @@ risk-engine-api
 
 The OpenShift deployment automation is now implemented and integrated into the daily lab convergence.
 
-Target runtime path:
+Runtime path:
 
 ```text
 Route risk.apps.okd.lab.talelkarimchebbi.com
@@ -218,7 +218,7 @@ Route risk.apps.okd.lab.talelkarimchebbi.com
 
 The Risk Engine currently uses one replica because its latest-calculation store is process-local memory. Horizontal scaling should be enabled after that state is moved to a shared persistent store.
 
-The complete OpenShift Risk Engine path is implemented in Git and is the next full rebuild validation step.
+The complete OpenShift Risk Engine path is implemented in Git. Its configure/deploy/end-to-end validation is integrated into `make configure-lab` stages 25–27.
 
 ---
 
@@ -316,6 +316,36 @@ LAB CONFIGURATION READY
 
 without requiring separate manual application deployment commands during a normal full rebuild.
 
+### OKD lifecycle modes
+
+`make configure-lab` supports two intentional OKD paths:
+
+```text
+Fresh Golden AMI / no OKD control planes
+  -> generate a fresh installer identity
+  -> create bootstrap + okd-01/02/03
+  -> complete installation
+  -> retire bootstrap
+
+Existing / Ready state
+  -> detect the three existing control planes
+  -> require/recover their runtime Terraform ownership
+  -> recover the administrative kubeconfig
+  -> preserve okd-01/02/03
+  -> continue with storage, registry, CI/CD and applications
+```
+
+Useful recovery/reset commands:
+
+```bash
+make status-okd-nodes
+make recover-okd-runtime-state
+make recover-existing-okd-cluster
+CONFIRM=RESET-OKD make reset-okd-cluster
+```
+
+`reset-okd-cluster` is destructive only for the OKD runtime layer and its Kubernetes-managed Cinder storage. It preserves OpenStack/Kolla, Jenkins, PostgreSQL, `okd-lb`, the edge gateway and the AWS foundation.
+
 ---
 
 ## Most important validation commands
@@ -400,6 +430,11 @@ make test-postgresql-restore
 ### OpenShift platform
 
 ```bash
+make status-okd-nodes
+make recover-okd-runtime-state
+make recover-existing-okd-cluster
+CONFIRM=RESET-OKD make reset-okd-cluster
+
 make configure-openshift-storage
 make configure-openshift-registry
 make configure-openshift-cicd
@@ -487,14 +522,41 @@ Important runbooks and design documents:
 
 ---
 
-## Next validation/documentation milestone
+## Project closure / final acceptance
 
-The next session should:
+The implemented scope is now represented in Git: AWS/OpenStack foundations, Jenkins, PostgreSQL, edge ingress, compact OKD/OpenShift, Cinder CSI, integrated registry, CI/CD, Helm deployments, `portfolio-java`, `risk-engine-api`, Golden/Ready AMI workflows and OKD recovery/reset guardrails.
 
-1. rebuild/reconverge the lab from the EC2 foundation with `make configure-lab`;
-2. confirm `make test-portfolio-java`;
-3. confirm `make test-risk-engine-api`;
-4. inspect the final OpenShift resources and network path;
-5. produce one global architecture diagram covering AWS, OpenStack, OKD/OpenShift, Jenkins, storage, ingress and the application-to-application/data flows.
+The architecture to explain end to end is:
 
-That global diagram will become the reference view for explaining the complete platform end to end.
+```text
+Internet
+  -> Route53
+  -> AWS ALB + ACM
+  -> edge-gateway Nginx
+      -> Jenkins / Horizon
+      -> okd-lb HAProxy
+          -> API :6443 -> OKD control planes
+          -> apps :80/:443 -> OpenShift Ingress Router
+              -> Route -> Service -> Pods
+                  -> portfolio-java -> PostgreSQL
+                  -> risk-engine-api -> portfolio-java -> PostgreSQL
+```
+
+A clean project acceptance still requires one final runtime proof from the current HEAD:
+
+```bash
+git pull origin main
+make configure-lab
+make test-portfolio-java
+make test-risk-engine-api
+```
+
+Acceptance markers:
+
+```text
+LAB CONFIGURATION READY
+PORTFOLIO-JAVA END-TO-END VALIDATION: SUCCESS
+RISK-ENGINE-API END-TO-END VALIDATION: SUCCESS
+```
+
+Once those markers are observed on a fresh Golden-AMI reconstruction, the project can be considered operationally closed; further work is enhancement rather than completion of the current scope.
